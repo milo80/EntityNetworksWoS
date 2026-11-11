@@ -18,8 +18,19 @@ institution networks (co-authorship, shared-keyword collaboration).
 
 ## Status
 
-Step 1 of the migration plan: repository skeleton. Pipeline, API, UI and
-deployment are not implemented yet.
+- Step 1 (done): repository skeleton.
+- Step 2 (done): pipeline refactored into `backend/pipeline/` with golden tests.
+- API, UI and deployment: not implemented yet.
+
+## Pipeline quick start
+
+    cd backend
+    python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
+    .venv/bin/python -m pipeline.cli ../data/wos -o out/      # writes network_*.json
+    .venv/bin/python -m pytest                                 # golden tests need data/wos/
+
+Relations: `author` (co-authorship) and `institution_keywords` (shared rare
+keywords). See `python -m pipeline.cli --help` for options.
 
 ## Data
 

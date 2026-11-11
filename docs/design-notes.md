@@ -93,3 +93,22 @@ Keyword co-occurrence as its own relation/dataset.
 A backend/API layer — deferred until data scale or access-control needs
 actually require it.
 
+
+
+Pipeline refactor notes (step 2)
+
+The legacy script now lives in backend/pipeline/ (io, authors, institutions,
+keywords, networks, sampling, export, relations, cli). Behavior is unchanged
+except for two determinism fixes:
+- input files are read in sorted order (glob order is filesystem-dependent);
+- build_connected_sample() no longer iterates Python sets of node ids, so the
+  sample (and node/edge order) no longer varies with PYTHONHASHSEED. Degree ties
+  are broken by the graph's node insertion order.
+Because of this, legacy/outputs/*.json (produced by a slightly older script
+version, non-reproducibly) are NOT the test reference; the reference is
+backend/tests/fixtures/golden/, byte-identical to the legacy script with only
+those two fixes applied.
+export_graph_to_json() became export.graph_to_network(), which returns a dict;
+file writing is pipeline.io.write_network_json(). Console prints became logging.
+.xls files are read with the calamine engine (xlrd is deprecated in pandas 3);
+both engines produce identical DataFrames on the sample data.

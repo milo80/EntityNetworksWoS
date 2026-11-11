@@ -5,7 +5,7 @@ description = "WoS bibliometric entity networks - pipeline and API"
 requires-python = ">=3.12"
 dependencies = [
     "pandas>=2.2",
-    "xlrd>=2.0",
+    "python-calamine>=0.2",
     "networkx>=3.3",
 ]
 
