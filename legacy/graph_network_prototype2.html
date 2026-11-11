@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Network graph viewer</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --panel: #f7f6f3;
+    --border: #e2ddd1;
+    --border-strong: #c9c2b0;
+    --text: #1f1e1c;
+    --text-secondary: #6b6860;
+    --text-muted: #9a968c;
+    --accent-bg: #eaf1fb;
+    --accent-text: #1f5fa8;
+    --error-text: #b3261e;
+    --radius: 8px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { font-family: var(--font); color: var(--text); background: var(--bg); }
+
+  .topbar { padding: 14px 20px; border-bottom: 1px solid var(--border); }
+  .topbar h1 { font-size: 16px; font-weight: 600; margin: 0; }
+  .topbar p { font-size: 12px; color: var(--text-muted); margin: 3px 0 0; }
+
+  .app { display: flex; height: calc(100vh - 54px); min-height: 560px; }
+
+  .panel { overflow-y: auto; padding: 16px; }
+  .panel.left { width: 230px; flex-shrink: 0; border-right: 1px solid var(--border); background: var(--panel); }
+  .panel.center { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .panel.right { width: 250px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--panel); }
+
+  .divider { width: 6px; flex-shrink: 0; cursor: col-resize; position: relative; background: var(--bg); }
+  .divider:hover, .divider.dragging { background: var(--accent-bg); }
+  .divider::after { content: ""; position: absolute; left: 50%; top: 50%; width: 2px; height: 28px; background: var(--border-strong); border-radius: 2px; transform: translate(-50%, -50%); }
+
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 14px; }
+  .card-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
+  .badge { font-size: 10px; padding: 2px 8px; border-radius: 999px; background: var(--accent-bg); color: var(--accent-text); font-weight: 600; }
+
+  .load-btn { width: 100%; padding: 8px 10px; border: 1px solid var(--text); border-radius: var(--radius); background: var(--text); color: var(--bg); font-size: 12px; font-weight: 600; font-family: var(--font); cursor: pointer; }
+  .load-btn:hover { opacity: 0.85; }
+  .file-status { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; word-break: break-word; }
+  .file-status.file-error { color: var(--error-text); }
+
+  .stat-row { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary); padding: 3px 0; }
+  .stat-val { color: var(--text); font-weight: 600; }
+
+  .filter-group { margin-bottom: 12px; }
+  .filter-label { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .chk-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); padding: 3px 0; cursor: pointer; }
+  .filter-note { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+  input[type="text"] { width: 100%; padding: 6px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius); font-size: 12px; font-family: var(--font); }
+
+  .main-title { font-size: 18px; font-weight: 600; padding: 16px 16px 0; }
+  .main-sub { font-size: 12px; color: var(--text-secondary); padding: 2px 16px 12px; }
+  .graph-card { flex: 1; margin: 0 16px 16px; display: flex; flex-direction: column; }
+  .graph-canvas-wrap { position: relative; flex: 1; display: flex; }
+  #cy { width: 100%; flex: 1; min-height: 420px; border: 1px solid var(--border); border-radius: var(--radius); }
+  .graph-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-muted); font-size: 13px; text-align: center; padding: 20px; }
+  .graph-empty-sub { font-size: 11px; color: var(--text-muted); }
+  .legend-row { display: flex; gap: 16px; margin-top: 10px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+  .data-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+  .dtab { font-size: 11px; padding: 4px 10px; border-radius: var(--radius); border: 1px solid var(--border-strong); background: var(--bg); color: var(--text-secondary); cursor: pointer; font-family: var(--font); }
+  .dtab.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+
+  .person-row { font-size: 11.5px; padding: 7px 6px; border-bottom: 1px solid var(--border); border-radius: 6px; transition: background 0.15s; }
+  .person-row:last-child { border-bottom: none; }
+  .person-name { color: var(--text); font-weight: 600; display: block; }
+  .person-meta { color: var(--text-muted); display: block; margin-top: 1px; }
+  .person-row.highlight { background: var(--accent-bg); }
+  .person-row.highlight .person-name { color: var(--accent-text); }
+
+  .json-shell { font-family: var(--font-mono); font-size: 10.5px; line-height: 1.6; color: var(--text-secondary); }
+  .json-bracket { color: var(--text-muted); white-space: pre; }
+  .json-item { white-space: pre-wrap; word-break: break-word; padding: 2px 4px; margin: 1px 0; border-radius: 6px; transition: background 0.15s; }
+  .json-item.highlight { background: var(--accent-bg); color: var(--accent-text); }
+  .empty-note { font-size: 12px; color: var(--text-muted); text-align: center; padding: 16px 0; }
+
+  .attr-row { display: flex; align-items: center; gap: 5px; margin-bottom: 6px; }
+  .row-btn { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--border-strong); background: var(--bg); color: var(--text-secondary); font-size: 14px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+  .row-btn:hover { background: var(--panel); }
+  .attr-value-input { flex: 1; min-width: 0; padding: 5px 7px; border: 1px solid var(--border-strong); border-radius: var(--radius); font-size: 11px; font-family: var(--font); }
+  .attr-key-select { flex-shrink: 0; width: 92px; padding: 5px 4px; border: 1px solid var(--border-strong); border-radius: var(--radius); font-size: 11px; font-family: var(--font); background: var(--bg); color: var(--text); }
+  .add-row-btn { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--border-strong); background: var(--bg); color: var(--text-secondary); font-size: 15px; line-height: 1; cursor: pointer; margin-bottom: 10px; padding: 0; }
+  .add-row-btn:hover { background: var(--panel); }
+  .apply-btn { width: 100%; padding: 7px 10px; border: 1px solid var(--text); border-radius: var(--radius); background: var(--bg); color: var(--text); font-size: 12px; font-weight: 600; font-family: var(--font); cursor: pointer; }
+  .apply-btn:hover { background: var(--panel); }
+  .attr-empty-note { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Network graph viewer</h1>
+  <p>Load any exported network JSON &middot; drag the panel edges to resize</p>
+</div>
+
+<div class="app" id="app">
+  <aside class="panel left" id="leftPanel">
+    <div class="card">
+      <div class="card-title">Data source</div>
+      <button class="load-btn" id="load-btn" type="button">Load JSON file&hellip;</button>
+      <input type="file" id="file-input" accept="application/json,.json" style="display:none">
+      <div class="file-status" id="file-status">No file loaded yet</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Dataset</div>
+      <div class="stat-row"><span>Nodes</span><span class="stat-val" id="stat-nodes">-</span></div>
+      <div class="stat-row"><span>Edges</span><span class="stat-val" id="stat-edges">-</span></div>
+      <div class="stat-row"><span>Groups</span><span class="stat-val" id="stat-teams">-</span></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Filters <span class="badge">Preview</span></div>
+      <div class="filter-group">
+        <div class="filter-label">Group</div>
+        <div id="team-filters"></div>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Relationship</div>
+        <div id="rel-filters"></div>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Search</div>
+        <input type="text" id="search-input" placeholder="Search by name...">
+      </div>
+      <div class="filter-note">Group/relationship checkboxes hide non-matching items. Search highlights matches.</div>
+    </div>
+    <div class="card" id="node-attr-search-card">
+      <div class="card-title">Node Attributes Search</div>
+      <div id="node-attr-rows"></div>
+      <button class="add-row-btn" id="node-attr-add-row" type="button" title="Add attribute filter">+</button>
+      <button class="apply-btn" id="node-attr-apply" type="button">Apply Search</button>
+      <div class="attr-empty-note" id="node-attr-empty-note" style="display:none;">No searchable attributes in this file.</div>
+      <div class="filter-note">Comma-separated values in a row match with OR. Rows combine with AND. Hides non-matching items on Apply.</div>
+    </div>
+    <div class="card" id="edge-attr-search-card">
+      <div class="card-title">Edge Attributes Search</div>
+      <div id="edge-attr-rows"></div>
+      <button class="add-row-btn" id="edge-attr-add-row" type="button" title="Add attribute filter">+</button>
+      <button class="apply-btn" id="edge-attr-apply" type="button">Apply Search</button>
+      <div class="attr-empty-note" id="edge-attr-empty-note" style="display:none;">No searchable attributes in this file.</div>
+      <div class="filter-note">Comma-separated values in a row match with OR. Rows combine with AND. Hides non-matching items on Apply.</div>
+    </div>
+  </aside>
+
+  <div class="divider" id="divider1"></div>
+
+  <main class="panel center" id="centerPanel">
+    <div class="main-title">Network graph</div>
+    <div class="main-sub" id="main-sub">No data loaded</div>
+    <div class="graph-card">
+      <div class="graph-canvas-wrap">
+        <div id="cy"></div>
+        <div class="graph-empty" id="graph-empty">
+          <p>No data loaded yet</p>
+          <p class="graph-empty-sub">Choose a JSON file on the left to visualize a network.</p>
+        </div>
+      </div>
+      <div class="legend-row" id="legend-row"></div>
+    </div>
+  </main>
+
+  <div class="divider" id="divider2"></div>
+
+  <aside class="panel right" id="rightPanel">
+    <div class="card" style="margin-bottom:0;">
+      <div class="data-tabs">
+        <button class="dtab active" data-view="friendly">Readable</button>
+        <button class="dtab" data-view="json">JSON</button>
+      </div>
+      <div id="data-view"></div>
+    </div>
+  </aside>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js"></script>
+<script>
+// --- Mutable state, set fresh each time a JSON file is loaded ---
+let data = null;
+let cy = null;
+let nodeById = {};
+let teamColors = {};
+let teams = [];
+let relTypes = [];
+let activeView = 'friendly';
+let wMin = 1, wMax = 1;
+
+const palette = ['#1D9E75', '#7F77DD', '#D85A30', '#D4537E', '#378ADD', '#639922', '#BA7517'];
+const otherColor = '#888780';
+
+function prettyTeam(t) {
+  if (t === 'other') return 'Other';
+  return t.replace('cluster_', 'Group ');
+}
+function prettyType(t) {
+  return t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+function surname(fullName) {
+  return String(fullName).split(',')[0];
+}
+function edgeWidth(w) {
+  if (wMax === wMin) return 1.5;
+  return 1 + ((w - wMin) / (wMax - wMin)) * 4.5;
+}
+
+// --- Generic "Search by Attributes" panel, shared by nodes and edges ---
+// Both node and edge JSON objects use the same shape - an optional flat
+// "attr" dict (see project schema) - so one implementation can drive both,
+// parameterized only by which item list it reads from and which DOM ids
+// it renders into. Two instances of this are created below: nodeAttrSearch
+// (reads data.nodes) and edgeAttrSearch (reads data.edges). Renaming or
+// fixing anything about how attribute search behaves only has to happen
+// once, here, for both to pick it up.
+function createAttrSearch({ idPrefix, getItems }) {
+  let keys = [];            // union of all item.attr keys in the current file
+  let rows = [];            // UI rows: [{key, value}] - value edited live, not yet applied
+  let appliedFilters = [];  // [{attribute, value}] - only updated by "Apply Search"
+
+  function el(id) { return document.getElementById(idPrefix + '-' + id); }
+
+  function valuesFor(key) {
+    const seen = new Set();
+    getItems().forEach(item => {
+      const v = item.attr ? item.attr[key] : undefined;
+      if (!v) return;
+      if (Array.isArray(v)) { v.forEach(x => seen.add(String(x))); }
+      else { seen.add(String(v)); }
+    });
+    return Array.from(seen).sort();
+  }
+
+  function populateDatalist(idx, key) {
+    const dl = document.getElementById(idPrefix + '-dl-' + idx);
+    if (!dl) return;
+    dl.innerHTML = valuesFor(key).map(v =>
+      '<option value="' + v.replace(/"/g, '&quot;') + '">'
+    ).join('');
+  }
+
+  function render() {
+    const container = el('rows');
+    const usedKeys = new Set(rows.map(r => r.key));
+
+    container.innerHTML = rows.map((row, i) => {
+      const options = keys
+        .filter(k => k === row.key || !usedKeys.has(k))
+        .map(k => '<option value="' + k + '"' + (k === row.key ? ' selected' : '') + '>' + k + '</option>')
+        .join('');
+      return (
+        '<div class="attr-row">' +
+          '<button type="button" class="row-btn remove-row" data-idx="' + i + '" title="Remove">\u2212</button>' +
+          '<input type="text" class="attr-value-input" data-idx="' + i + '" list="' + idPrefix + '-dl-' + i + '" placeholder="text" value="' + (row.value || '').replace(/"/g, '&quot;') + '">' +
+          '<datalist id="' + idPrefix + '-dl-' + i + '"></datalist>' +
+          '<select class="attr-key-select" data-idx="' + i + '">' + options + '</select>' +
+        '</div>'
+      );
+    }).join('');
+
+    rows.forEach((row, i) => populateDatalist(i, row.key));
+
+    container.querySelectorAll('.remove-row').forEach(btn => {
+      btn.addEventListener('click', () => {
+        rows.splice(parseInt(btn.dataset.idx, 10), 1);
+        render();
+        updateAddButtonVisibility();
+      });
+    });
+    container.querySelectorAll('.attr-value-input').forEach(inp => {
+      inp.addEventListener('input', e => {
+        rows[parseInt(inp.dataset.idx, 10)].value = e.target.value;
+      });
+    });
+    container.querySelectorAll('.attr-key-select').forEach(sel => {
+      sel.addEventListener('change', e => {
+        const idx = parseInt(sel.dataset.idx, 10);
+        rows[idx].key = e.target.value;
+        rows[idx].value = ''; // reset text - old value belonged to the previous attribute
+        render();
+        updateAddButtonVisibility();
+      });
+    });
+
+    updateAddButtonVisibility();
+  }
+
+  function updateAddButtonVisibility() {
+    const usedKeys = new Set(rows.map(r => r.key));
+    const remaining = keys.filter(k => !usedKeys.has(k));
+    el('add-row').style.display = (remaining.length === 0) ? 'none' : '';
+  }
+
+  el('add-row').addEventListener('click', () => {
+    const usedKeys = new Set(rows.map(r => r.key));
+    const nextKey = keys.find(k => !usedKeys.has(k));
+    if (!nextKey) return;
+    rows.push({ key: nextKey, value: '' });
+    render();
+  });
+
+  el('apply').addEventListener('click', () => {
+    // Each row's raw text can list several comma-separated terms - those
+    // combine with OR (match any one of them); different rows still
+    // combine with AND (matchesAttrFilters requires every row to match).
+    appliedFilters = rows
+      .map(row => ({
+        attribute: row.key,
+        values: (row.value || '')
+          .split(',')
+          .map(v => v.trim().toLowerCase())
+          .filter(v => v.length > 0)
+      }))
+      .filter(f => f.values.length > 0);
+    applyFilters();
+  });
+
+  function reset() {
+    const seen = new Set();
+    getItems().forEach(item => { if (item.attr) Object.keys(item.attr).forEach(k => seen.add(k)); });
+    keys = Array.from(seen).sort();
+    rows = keys.length ? [{ key: keys[0], value: '' }] : [];
+    appliedFilters = [];
+
+    const hasAttrs = keys.length > 0;
+    el('rows').style.display = hasAttrs ? '' : 'none';
+    el('add-row').style.display = hasAttrs ? '' : 'none';
+    el('apply').style.display = hasAttrs ? '' : 'none';
+    el('empty-note').style.display = hasAttrs ? 'none' : '';
+
+    if (hasAttrs) render();
+  }
+
+  return {
+    reset,
+    get appliedFilters() { return appliedFilters; }
+  };
+}
+
+const nodeAttrSearch = createAttrSearch({ idPrefix: 'node-attr', getItems: () => data ? data.nodes : [] });
+const edgeAttrSearch = createAttrSearch({ idPrefix: 'edge-attr', getItems: () => data ? data.edges : [] });
+
+// --- Filtering (reads current `data`/`nodeById`/`cy` each time, so it works after reloading) ---
+function checkedValues(containerId, attr) {
+  return new Set(Array.from(document.querySelectorAll('#' + containerId + ' input:checked')).map(cb => cb.dataset[attr]));
+}
+function matchesAttrFilters(item, filters) {
+  for (const f of filters) {
+    const raw = item.attr ? item.attr[f.attribute] : undefined;
+    if (!raw) return false;
+    const val = (Array.isArray(raw) ? raw.join(' | ') : String(raw)).toLowerCase();
+    if (!f.values.some(v => val.includes(v))) return false;
+  }
+  return true;
+}
+// A node's own filters - Group checkbox + Node Attributes Search - independent
+// of any edge. Kept separate from isNodeVisible() so isEdgeVisible() can check
+// endpoints without creating a isNodeVisible <-> isEdgeVisible cycle (see below).
+function nodePassesOwnFilters(n) {
+  if (!checkedValues('team-filters', 'team').has(n.team)) return false;
+  return matchesAttrFilters(n, nodeAttrSearch.appliedFilters);
+}
+// Edge visibility depends only on the Relationship checkboxes, both endpoints'
+// OWN filters (not their cascaded visibility), and Edge Attributes Search -
+// never on isNodeVisible(), which is what keeps this acyclic.
+function isEdgeVisible(e) {
+  if (!checkedValues('rel-filters', 'rel').has(e.type)) return false;
+  const src = nodeById[e.source], tgt = nodeById[e.target];
+  if (!src || !tgt || !nodePassesOwnFilters(src) || !nodePassesOwnFilters(tgt)) return false;
+  return matchesAttrFilters(e, edgeAttrSearch.appliedFilters);
+}
+// Node visibility = own filters, plus (only while an Edge Attributes Search
+// filter is active) at least one visible incident edge. A node with no edges
+// at all in the dataset is exempt from that second condition - it isn't
+// something an edge-level filter can judge one way or the other, so it stays
+// governed by its own filters alone, same as before this feature existed.
+// Deliberately does NOT extend this cascade to the Relationship checkboxes
+// alone (no edge-attribute filter active) - per the existing convention,
+// Relationship filtering hides edges only, not their endpoint nodes.
+function isNodeVisible(n) {
+  if (!nodePassesOwnFilters(n)) return false;
+  if (edgeAttrSearch.appliedFilters.length === 0) return true;
+  const incident = data.edges.filter(e => e.source === n.id || e.target === n.id);
+  if (incident.length === 0) return true;
+  return incident.some(isEdgeVisible);
+}
+function visibleNodes() { return data ? data.nodes.filter(isNodeVisible) : []; }
+function visibleEdges() { return data ? data.edges.filter(isEdgeVisible) : []; }
+
+function applyFilters() {
+  if (!data || !cy) return;
+  cy.batch(() => {
+    cy.nodes().forEach(n => {
+      n.toggleClass('hidden-el', !isNodeVisible(nodeById[n.id()]));
+    });
+    cy.edges().forEach(e => {
+      const idx = parseInt(e.id().slice(1), 10);
+      e.toggleClass('hidden-el', !isEdgeVisible(data.edges[idx]));
+    });
+  });
+  const vNodes = visibleNodes(), vEdges = visibleEdges();
+  document.getElementById('main-sub').textContent =
+    vNodes.length + ' of ' + data.nodes.length + ' nodes \u00b7 ' +
+    vEdges.length + ' of ' + data.edges.length + ' edges shown';
+  refreshDataView();
+}
+
+// --- Data panel (Readable / JSON), always in sync with active filters ---
+function renderFriendly() {
+  const view = document.getElementById('data-view');
+  if (!data) { view.innerHTML = ''; return; }
+  const vNodes = visibleNodes();
+  if (vNodes.length === 0) {
+    view.innerHTML = '<div class="empty-note">No items match the current filters.</div>';
+    return;
+  }
+  view.innerHTML = vNodes.map(n =>
+    '<div class="person-row" data-id="' + n.id + '"><span class="person-name">' + n.name +
+    '</span><span class="person-meta">' + (n.role || '') + ' \u00b7 ' + prettyTeam(n.team) + '</span></div>'
+  ).join('');
+}
+function renderJson() {
+  const view = document.getElementById('data-view');
+  if (!data) { view.innerHTML = ''; return; }
+  const vNodes = visibleNodes();
+  const vEdges = visibleEdges();
+  if (vNodes.length === 0 && vEdges.length === 0) {
+    view.innerHTML = '<div class="empty-note">No items match the current filters.</div>';
+    return;
+  }
+  const esc = s => s.replace(/</g, '&lt;');
+  const nodeBlocks = vNodes.map((n, i) =>
+    '<div class="json-item" data-id="' + esc(String(n.id)) + '">' +
+      esc(JSON.stringify(n, null, 2)) + (i < vNodes.length - 1 ? ',' : '') +
+    '</div>'
+  ).join('');
+  const edgeBlocks = vEdges.map((e, i) => {
+    // Same 'e'+index scheme cytoscape edges are given at load time (see
+    // loadGraph()) and that applyFilters() already reads back via
+    // e.id().slice(1) - reusing it here is what lets an edge tap find its
+    // JSON block, the same way node id already does for nodes above.
+    const edgeId = 'e' + data.edges.indexOf(e);
+    return '<div class="json-item" data-id="' + esc(edgeId) + '">' +
+      esc(JSON.stringify(e, null, 2)) + (i < vEdges.length - 1 ? ',' : '') +
+    '</div>';
+  }).join('');
+  view.innerHTML =
+    '<div class="json-shell">' +
+      '<div class="json-bracket">{</div>' +
+      '<div class="json-bracket">&nbsp;&nbsp;"nodes": [</div>' +
+      nodeBlocks +
+      '<div class="json-bracket">&nbsp;&nbsp;],</div>' +
+      '<div class="json-bracket">&nbsp;&nbsp;"edges": [</div>' +
+      edgeBlocks +
+      '<div class="json-bracket">&nbsp;&nbsp;]</div>' +
+      '<div class="json-bracket">}</div>' +
+    '</div>';
+}
+function refreshDataView() {
+  activeView === 'json' ? renderJson() : renderFriendly();
+}
+
+function highlightEntity(id) {
+  document.querySelectorAll('.person-row, .json-item').forEach(r => r.classList.remove('highlight'));
+  const match = document.querySelector('.person-row[data-id="' + id + '"], .json-item[data-id="' + id + '"]');
+  if (match) {
+    match.classList.add('highlight');
+    match.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+document.querySelectorAll('.dtab').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.dtab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeView = btn.dataset.view;
+    refreshDataView();
+  };
+});
+
+document.getElementById('search-input').addEventListener('input', e => {
+  if (!cy) return;
+  const q = e.target.value.trim().toLowerCase();
+  cy.nodes().removeClass('search-match');
+  if (q.length > 0) {
+    cy.nodes().forEach(n => {
+      const nd = nodeById[n.id()];
+      if (nd && String(nd.name).toLowerCase().includes(q)) n.addClass('search-match');
+    });
+  }
+});
+
+// --- Loading a new dataset ---
+function showFileError(msg) {
+  const status = document.getElementById('file-status');
+  status.textContent = msg;
+  status.classList.add('file-error');
+}
+
+function loadGraph(parsed, sourceLabel) {
+  if (!parsed || !Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) {
+    showFileError('That file doesn\u2019t look like a valid network JSON (expected "nodes" and "edges" arrays).');
+    return;
+  }
+
+  data = parsed;
+  const status = document.getElementById('file-status');
+  status.textContent = sourceLabel ? ('Loaded: ' + sourceLabel) : 'Loaded';
+  status.classList.remove('file-error');
+
+  nodeById = {};
+  data.nodes.forEach(n => { nodeById[n.id] = n; });
+
+  teams = Array.from(new Set(data.nodes.map(n => n.team)));
+  teamColors = {};
+  let colorIdx = 0;
+  teams.forEach(t => {
+    teamColors[t] = (t === 'other') ? otherColor : palette[colorIdx++ % palette.length];
+  });
+
+  relTypes = Array.from(new Set(data.edges.map(e => e.type)));
+
+  const weights = data.edges.map(e => e.weight || 1);
+  wMin = weights.length ? Math.min(...weights) : 1;
+  wMax = weights.length ? Math.max(...weights) : 1;
+
+  document.getElementById('stat-nodes').textContent = data.nodes.length;
+  document.getElementById('stat-edges').textContent = data.edges.length;
+  document.getElementById('stat-teams').textContent = teams.length;
+
+  document.getElementById('legend-row').innerHTML = teams.map(t =>
+    '<span class="legend-item"><span class="dot" style="background:' + teamColors[t] + '"></span>' + prettyTeam(t) + '</span>'
+  ).join('');
+
+  document.getElementById('team-filters').innerHTML = teams.map(t =>
+    '<label class="chk-row"><input type="checkbox" checked data-team="' + t + '">' + prettyTeam(t) + '</label>'
+  ).join('');
+  document.getElementById('rel-filters').innerHTML = relTypes.map(t =>
+    '<label class="chk-row"><input type="checkbox" checked data-rel="' + t + '">' + prettyType(t) + '</label>'
+  ).join('');
+  document.querySelectorAll('#team-filters input, #rel-filters input').forEach(cb => {
+    cb.addEventListener('change', applyFilters);
+  });
+
+  document.getElementById('search-input').value = '';
+  nodeAttrSearch.reset();
+  edgeAttrSearch.reset();
+
+  if (cy) { cy.destroy(); }
+  cy = cytoscape({
+    container: document.getElementById('cy'),
+    elements: {
+      nodes: data.nodes.map(n => ({ data: { id: n.id, label: surname(n.name), team: n.team } })),
+      edges: data.edges.map((e, i) => ({ data: { id: 'e' + i, source: e.source, target: e.target, type: e.type, weight: e.weight || 1 } }))
+    },
+    style: [
+      { selector: 'node', style: {
+        'background-color': ele => teamColors[ele.data('team')] || otherColor,
+        'label': 'data(label)', 'color': '#fff', 'font-size': 9,
+        'text-valign': 'center', 'text-halign': 'center',
+        'width': 34, 'height': 34, 'border-width': 0
+      }},
+      { selector: 'node:selected', style: { 'border-width': 3, 'border-color': '#1f1e1c' } },
+      { selector: 'edge', style: {
+        'width': ele => edgeWidth(ele.data('weight')),
+        'line-color': '#ccc', 'curve-style': 'bezier'
+      }},
+      { selector: 'edge[type = "reports_to"]', style: {
+        'line-color': '#999', 'target-arrow-color': '#999', 'target-arrow-shape': 'triangle'
+      }},
+      { selector: 'edge[type = "collaborates_with"]', style: {
+        'line-color': '#ccc', 'line-style': 'dashed'
+      }},
+      { selector: 'edge:selected', style: {
+        'line-color': '#1f1e1c', 'target-arrow-color': '#1f1e1c',
+        'width': ele => edgeWidth(ele.data('weight')) + 2
+      }},
+      { selector: '.search-match', style: { 'border-width': 4, 'border-color': '#E0A62B' } },
+      { selector: '.hidden-el', style: { 'display': 'none' } }
+    ],
+    layout: { name: 'cose', animate: false, padding: 30 }
+  });
+
+  cy.on('tap', 'node', evt => {
+    cy.nodes().unselect();
+    evt.target.select();
+    highlightEntity(evt.target.data('id'));
+  });
+
+  cy.on('tap', 'edge', evt => {
+    cy.edges().unselect();
+    evt.target.select();
+    highlightEntity(evt.target.data('id'));
+  });
+
+  document.getElementById('graph-empty').style.display = 'none';
+
+  activeView = 'friendly';
+  document.querySelectorAll('.dtab').forEach(b => b.classList.remove('active'));
+  document.querySelector('.dtab[data-view="friendly"]').classList.add('active');
+
+  applyFilters();
+}
+
+// --- File picker (works no matter how this page is opened) ---
+document.getElementById('load-btn').addEventListener('click', () => {
+  document.getElementById('file-input').click();
+});
+document.getElementById('file-input').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = evt => {
+    try {
+      loadGraph(JSON.parse(evt.target.result), file.name);
+    } catch (err) {
+      showFileError('Could not parse that file as JSON: ' + err.message);
+    }
+  };
+  reader.onerror = () => showFileError('Could not read that file.');
+  reader.readAsText(file);
+});
+
+// --- Optional convenience: try auto-loading network_sample.json if this page
+// is being served over http(s) rather than opened as a local file. Silently
+// does nothing if that fails (which it will under file://) - the button above
+// always works regardless. ---
+window.addEventListener('DOMContentLoaded', () => {
+  fetch('network_sample.json')
+    .then(r => { if (!r.ok) throw new Error('not found'); return r.json(); })
+    .then(json => loadGraph(json, 'network_sample.json (auto-loaded)'))
+    .catch(() => { /* expected when opened via file:// - use the button instead */ });
+});
+
+// --- Resizable side panels ---
+function makeDraggable(divider, panel, side) {
+  divider.addEventListener('mousedown', e => {
+    e.preventDefault();
+    divider.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    function onMove(ev) {
+      const appRect = document.getElementById('app').getBoundingClientRect();
+      let newWidth;
+      if (side === 'left') {
+        newWidth = ev.clientX - appRect.left;
+        newWidth = Math.max(170, Math.min(400, newWidth));
+      } else {
+        newWidth = appRect.right - ev.clientX;
+        newWidth = Math.max(180, Math.min(420, newWidth));
+      }
+      panel.style.width = newWidth + 'px';
+    }
+    function onUp() {
+      divider.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      if (cy) cy.resize();
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
+makeDraggable(document.getElementById('divider1'), document.getElementById('leftPanel'), 'left');
+makeDraggable(document.getElementById('divider2'), document.getElementById('rightPanel'), 'right');
+
+window.addEventListener('resize', () => { if (cy) cy.resize(); });
+</script>
+</body>
+</html>
