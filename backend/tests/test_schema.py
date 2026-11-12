@@ -83,3 +83,10 @@ def test_committed_json_schema_is_up_to_date():
     assert SCHEMA_PATH.exists(), "run: python -m pipeline.schema"
     assert SCHEMA_PATH.read_text(encoding="utf-8") == render_json_schema(), \
         "docs/network.schema.json is stale - run: python -m pipeline.schema"
+
+
+def test_committed_openapi_is_up_to_date():
+    from app.openapi_export import OPENAPI_PATH, render_openapi
+    assert OPENAPI_PATH.exists(), "run: python -m app.openapi_export"
+    assert OPENAPI_PATH.read_text(encoding="utf-8") == render_openapi(), \
+        "docs/openapi.json is stale - run: python -m app.openapi_export (then npm run gen:api)"
