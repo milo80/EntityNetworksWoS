@@ -19,12 +19,14 @@ class WoSReadError(RuntimeError):
 
 
 def read_wos_files(paths: Iterable[str | Path], sheet_name: str = WOS_SHEET) -> pd.DataFrame:
-    """Read WoS .xls exports and concatenate them into one article-level df.
+    """Read WoS .xls exports and concatenate them, in the order given.
 
-    Files are read in sorted path order so the result (and every network built
-    from it) is reproducible regardless of filesystem listing order.
+    Order matters: the pipeline keeps first-seen values (e.g. a keyword's
+    capitalization) and breaks degree ties by first appearance. Callers must
+    pass a deterministic order - read_wos_folder() sorts by file name, and the
+    worker sorts a dataset's files by their original upload names.
     """
-    paths = sorted(Path(p) for p in paths)
+    paths = [Path(p) for p in paths]
     if not paths:
         raise WoSReadError("No WoS files given")
 
@@ -43,8 +45,8 @@ def read_wos_files(paths: Iterable[str | Path], sheet_name: str = WOS_SHEET) -> 
 
 
 def read_wos_folder(folder: str | Path, pattern: str = "*.xls") -> pd.DataFrame:
-    """Read every WoS export in ``folder`` matching ``pattern``."""
-    return read_wos_files(Path(folder).glob(pattern))
+    """Read every WoS export in ``folder`` matching ``pattern``, sorted by file name."""
+    return read_wos_files(sorted(Path(folder).glob(pattern)))
 
 
 def write_network_json(network: dict, path: str | Path) -> None:

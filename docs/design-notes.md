@@ -132,3 +132,63 @@ Hu, Zhixi"), which produced an author->same-author edge and inflated the
 "N co-authors" role by 2. create_author_network() now skips same-identity pairs.
 Effect on the sample data: one edge removed (3023 -> 3022) and one role fixed
 (6 -> 4 co-authors); nothing else changed. Goldens were regenerated.
+
+
+Back-end (step 4)
+
+Layout: backend/app/ - config.py (env settings), db.py, models/ (User,
+UserSession, Dataset, DatasetFile, NetworkRun), auth/ (passwords, sessions +
+CSRF, rate limiter), api/ (routers), services/ (upload storage, run -> pipeline
+call), worker.py, manage.py (create-user). Migrations in backend/alembic/.
+
+Decisions that differ from the original plan, and why:
+- Sessions, not JWT: a random 256-bit token in an httpOnly, SameSite=Lax
+  cookie (Secure in production - enforced at startup); the DB stores only its
+  SHA-256. Logout and account deactivation take effect immediately, which a
+  stateless JWT can't do without a denylist.
+- CSRF: synchronizer token stored with the session, exposed in a readable
+  cookie and in the login/me response; every POST/PUT/PATCH/DELETE must echo it
+  in X-CSRF-Token.
+- Rate limiting: a small in-memory fixed-window limiter instead of slowapi.
+  Correct only for a single API process - which is the deployment model.
+- No password reset yet: it needs an email service. Admins can create accounts
+  with `python -m app.manage create-user`; ALLOW_REGISTRATION=false closes signup.
+- Login failures for unknown emails and wrong passwords return the same
+  response and take the same time (Argon2 verify runs against a dummy hash).
+
+Uploads: only legacy .xls (OLE2 signature D0CF11E0...) is accepted - that is
+what WoS exports. Files are streamed to <UPLOAD_DIR>/<dataset_id>/<random>.xls,
+never under the user's name, with SHA-256 and size recorded. Contents are
+parsed only by the worker. LIMITATION: the size check runs while the handler
+copies the file, i.e. after Starlette has already received the whole request
+into a temporary file - the reverse proxy (Caddy, step 6) must cap the request
+body size.
+
+File order: the pipeline is order-sensitive (first-seen keyword spelling, degree
+tie-breaks). Stored names are random, so the worker reads a dataset's files
+sorted by original file name. Results therefore don't depend on upload order,
+and match `pipeline.cli` run on the same folder (verified by the real-data
+end-to-end test, which uploads in reverse order).
+
+Worker / queue: network_runs is the queue (SELECT ... FOR UPDATE SKIP LOCKED).
+On startup the worker requeues runs left 'running' (up to WORKER_MAX_ATTEMPTS,
+then marks them failed). This assumes exactly ONE worker process: a second
+worker starting up would requeue a run the first is still processing. Seen in
+practice during smoke testing, when a previous session's processes survived a
+restart. Deployment must guarantee a single worker; more workers would need a
+heartbeat column instead.
+
+Network responses are served straight from Postgres (JSONB cast to text, no
+re-parse in Python) with ETag "run-<id>" (a succeeded run never changes) and
+Cache-Control: private, no-cache, so repeat views are a cheap 304.
+
+Tests: tests/api/ runs against a real PostgreSQL (JSONB, SKIP LOCKED) using
+TEST_DATABASE_URL; the schema is rebuilt from the Alembic migrations each
+session. Worker tests use tests/fixtures/synthetic_wos.py (made-up records, safe
+to commit), so they also run in CI without the licensed WoS sample.
+
+Known open items:
+- Starlette warns that its TestClient will want the `httpx2` package instead of
+  `httpx`. Not switched yet: the package wasn't vetted. Harmless for now.
+- uvicorn's own access log lines are plain text, not JSON like the app logs;
+  give uvicorn a log config in step 6.

@@ -27,3 +27,6 @@ frontend/dist/
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Local runtime data (uploads, logs)
+backend/var/

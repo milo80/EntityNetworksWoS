@@ -18,9 +18,13 @@ api = [
     "sqlalchemy>=2.0",
     "alembic>=1.13",
     "psycopg[binary]>=3.2",
+    "argon2-cffi>=23.1",
+    "python-multipart>=0.0.9",
+    "email-validator>=2.1",
 ]
 dev = [
     "pytest>=8",
+    "httpx>=0.27",
     "ruff>=0.6",
     "mypy>=1.11",
 ]
@@ -33,6 +37,7 @@ build-backend = "setuptools.build_meta"
 include = ["app*", "pipeline*"]
 
 [tool.ruff]
+extend-exclude = ["alembic/versions"]
 line-length = 100
 target-version = "py312"
 
