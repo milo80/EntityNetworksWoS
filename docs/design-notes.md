@@ -207,3 +207,42 @@ Crash recovery is checked manually, locally: queue a run, `kill -9` the worker
 while the run is 'running', start a new worker, and it logs "Recovered 1
 orphaned run(s)" and finishes the run. (When finding the worker PID, don't use
 `pgrep -f 'app.worker'` from a script - it also matches the script's own shell.)
+
+
+Frontend (step 5)
+
+Pages: Login/Register; Datasets (list, upload, "open local file"); Dataset
+(networks with live status, Build network form, delete); Dataset data (profile:
+overview figures, articles per year, top-10 lists, columns, sample rows); and
+the Explorer (/runs/:id, or /local for a local JSON file that is never uploaded).
+No separate Runs page: runs always belong to a dataset.
+
+Explorer: every prototype rule is kept (lib/visibility.ts; a parity test runs
+the prototype itself in jsdom and compares). Layout changes: filters | graph |
+details with the graph at 50% initially and draggable (and keyboard-resizable)
+dividers; no cards inside panels; the group filter list doubles as the legend
+(color swatch + count), so there is no separate legend row; attribute search
+sits behind an "Attribute search" disclosure; a selection box at the top of the
+details panel shows the clicked node/link with all its attributes; clicking an
+entry in the Readable list selects and centres it in the graph. Below 1024 px
+the side panels become toggleable drawers.
+
+Group colors: a network graph is an all-pairs color problem (any two groups can
+sit side by side). Validated with the dataviz palette validator, the largest
+subset of the reference categorical palette passing all-pairs in light mode
+without CVD warnings is 4 colors (blue #2a78d6, yellow #eda100, magenta
+#e87ba4, green #008300; worst CVD dE 13, normal-vision dE 19.6). So the 4
+largest groups are colored, assigned once per network (colors never repaint
+when filtering); all other groups and "other" are neutral gray; "unknown" is a
+hollow node (distinct from "other" without relying on color). Yellow and
+magenta are below 3:1 contrast, which is acceptable because every group is
+also named in the filter list and the details panel. The prototype cycled 7
+colors over up to 22 groups, which made different countries share a color.
+
+Dataset profile: computed by the worker right after upload (pipeline/profile.py),
+served by GET /api/datasets/{id}/profile; the API still never parses uploads.
+Fixed a hash-seed-dependent ordering of tied keyword counts (set iteration)
+found by the fixture-consistency test.
+
+Bundling: the Explorer (Cytoscape, ~146 KB gzip) is lazy-loaded; the rest of the
+app is ~100 KB gzip.

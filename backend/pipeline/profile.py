@@ -130,7 +130,9 @@ def profile_dataset(df: pd.DataFrame) -> dict:
         keywords: dict[str, Any] = {}
         for col in keyword_cols:
             lists = parsed[col.lower().replace(" ", "_")]
-            counter = Counter(normalize_keyword(k) for kws in lists for k in set(kws))
+            # dict.fromkeys: dedupe per article in first-seen order (a set would make tie order
+            # depend on the hash seed).
+            counter = Counter(normalize_keyword(k) for kws in lists for k in dict.fromkeys(kws))
             keywords[col.lower().replace(" ", "_")] = {
                 "articles_with_pct": _pct((lists.apply(len) > 0).sum(), len(df)),
                 "unique": len(counter),

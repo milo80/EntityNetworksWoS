@@ -54,3 +54,11 @@ def test_profile_tolerates_missing_wos_columns():
     p = profile_dataset(pd.DataFrame({"Title": ["one", "two"]}))
     assert p["stats"] == {"articles": 2, "columns": 1}
     assert p["schema"][0]["distinct"] == 2
+
+
+def test_frontend_profile_fixture_is_current():
+    """frontend/src/test/synthetic_profile.json mirrors this output for UI tests."""
+    from pathlib import Path
+    fixture = Path(__file__).resolve().parents[2] / "frontend" / "src" / "test" / "synthetic_profile.json"
+    assert json.loads(fixture.read_text(encoding="utf-8")) == profile_dataset(synthetic_wos_df()), \
+        "regenerate: see the command in frontend/src/test/mockApi.ts"

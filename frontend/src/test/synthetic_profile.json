@@ -1,0 +1,311 @@
+{
+  "version": 1,
+  "schema": [
+    {
+      "name": "UT (Unique WOS ID)",
+      "type": "text",
+      "non_empty": 6,
+      "non_empty_pct": 100.0,
+      "distinct": 6,
+      "example": "WOS:1"
+    },
+    {
+      "name": "Author Full Names",
+      "type": "text",
+      "non_empty": 6,
+      "non_empty_pct": 100.0,
+      "distinct": 6,
+      "example": "Rossi, Anna; Bianchi, Marco; Lee, Kim"
+    },
+    {
+      "name": "Article Title",
+      "type": "text",
+      "non_empty": 6,
+      "non_empty_pct": 100.0,
+      "distinct": 6,
+      "example": "Synthetic article WOS:1"
+    },
+    {
+      "name": "Source Title",
+      "type": "text",
+      "non_empty": 6,
+      "non_empty_pct": 100.0,
+      "distinct": 1,
+      "example": "Journal of Tests"
+    },
+    {
+      "name": "Publication Year",
+      "type": "number",
+      "non_empty": 6,
+      "non_empty_pct": 100.0,
+      "distinct": 1,
+      "example": 2025
+    },
+    {
+      "name": "Document Type",
+      "type": "text",
+      "non_empty": 6,
+      "non_empty_pct": 100.0,
+      "distinct": 1,
+      "example": "Article"
+    },
+    {
+      "name": "Addresses",
+      "type": "text",
+      "non_empty": 6,
+      "non_empty_pct": 100.0,
+      "distinct": 6,
+      "example": "[Rossi, Anna; Bianchi, Marco] Univ Parma, Dept Med, I-43126 Parma, Italy; [Lee, Kim] Mayo Clin, Rochester, MN 55905 USA"
+    },
+    {
+      "name": "Reprint Addresses",
+      "type": "text",
+      "non_empty": 6,
+      "non_empty_pct": 100.0,
+      "distinct": 5,
+      "example": "Rossi, Anna (corresponding author), Univ Parma, Dept Med, I-43126 Parma, Italy."
+    },
+    {
+      "name": "ORCIDs",
+      "type": "text",
+      "non_empty": 4,
+      "non_empty_pct": 66.7,
+      "distinct": 2,
+      "example": "Rossi, Anna/0000-0001-0000-0001"
+    },
+    {
+      "name": "Author Keywords",
+      "type": "text",
+      "non_empty": 6,
+      "non_empty_pct": 100.0,
+      "distinct": 4,
+      "example": "fetal ultrasound; deep learning; gynecology oncology"
+    },
+    {
+      "name": "Keywords Plus",
+      "type": "text",
+      "non_empty": 0,
+      "non_empty_pct": 0.0,
+      "distinct": 0,
+      "example": null
+    }
+  ],
+  "sample": {
+    "columns": [
+      "UT (Unique WOS ID)",
+      "Author Full Names",
+      "Article Title",
+      "Source Title",
+      "Publication Year",
+      "Document Type",
+      "Addresses",
+      "Reprint Addresses",
+      "ORCIDs",
+      "Author Keywords",
+      "Keywords Plus"
+    ],
+    "rows": [
+      [
+        "WOS:1",
+        "Rossi, Anna; Bianchi, Marco; Lee, Kim",
+        "Synthetic article WOS:1",
+        "Journal of Tests",
+        2025,
+        "Article",
+        "[Rossi, Anna; Bianchi, Marco] Univ Parma, Dept Med, I-43126 Parma, Italy; [Lee, Kim] Mayo Clin, Rochester, MN 55905 USA",
+        "Rossi, Anna (corresponding author), Univ Parma, Dept Med, I-43126 Parma, Italy.",
+        "Rossi, Anna/0000-0001-0000-0001",
+        "fetal ultrasound; deep learning; gynecology oncology",
+        null
+      ],
+      [
+        "WOS:2",
+        "Rossi, Anna; Verdi, Luca",
+        "Synthetic article WOS:2",
+        "Journal of Tests",
+        2025,
+        "Article",
+        "[Rossi, Anna; Verdi, Luca] Univ Parma, Dept Med, I-43126 Parma, Italy",
+        "Verdi, Luca (corresponding author), Univ Parma, Dept Med, I-43126 Parma, Italy.",
+        "Rossi, Anna/0000-0001-0000-0001",
+        "fetal ultrasound; image segmentation; deep learning",
+        null
+      ],
+      [
+        "WOS:3",
+        "Lee, Kim; Smith, John",
+        "Synthetic article WOS:3",
+        "Journal of Tests",
+        2025,
+        "Article",
+        "[Lee, Kim; Smith, John] Mayo Clin, Rochester, MN 55905 USA",
+        "Smith, John (corresponding author), Mayo Clin, Rochester, MN 55905 USA.",
+        null,
+        "fetal ultrasound; deep learning; gynecology oncology",
+        null
+      ],
+      [
+        "WOS:4",
+        "Wang, Li; Zhang, Wei; Smith, John",
+        "Synthetic article WOS:4",
+        "Journal of Tests",
+        2025,
+        "Article",
+        "[Wang, Li; Zhang, Wei] Peking Univ, Dept Cardiol, Beijing 100191, Peoples R China; [Smith, John] Mayo Clin, Rochester, MN 55905 USA",
+        "Wang, Li (corresponding author), Peking Univ, Dept Cardiol, Beijing 100191, Peoples R China.",
+        "Wang, Li/0000-0002-0000-000X",
+        "heart failure; bibliometric analysis; citespace",
+        null
+      ],
+      [
+        "WOS:5",
+        "Zhang, Wei; Chen, Yu",
+        "Synthetic article WOS:5",
+        "Journal of Tests",
+        2025,
+        "Article",
+        "[Zhang, Wei; Chen, Yu] Fudan Univ, Shanghai 200032, Peoples R China",
+        "Chen, Yu (corresponding author), Fudan Univ, Shanghai 200032, Peoples R China.",
+        null,
+        "heart failure; bibliometric analysis; citespace",
+        null
+      ],
+      [
+        "WOS:6",
+        "Chen, Yu; Wang, Li; Hu, Zhixi; Hu, Zhixi",
+        "Synthetic article WOS:6",
+        "Journal of Tests",
+        2025,
+        "Article",
+        "[Chen, Yu; Hu, Zhixi] Fudan Univ, Shanghai 200032, Peoples R China; [Wang, Li] Peking Univ, Dept Cardiol, Beijing 100191, Peoples R China",
+        "Chen, Yu (corresponding author), Fudan Univ, Shanghai 200032, Peoples R China.",
+        "Wang, Li/0000-0002-0000-000X",
+        "large language models; ethics; medical education",
+        null
+      ]
+    ]
+  },
+  "stats": {
+    "articles": 6,
+    "columns": 11,
+    "unique_article_ids": 6,
+    "duplicate_article_ids": 0,
+    "publication_years": {
+      "min": 2025,
+      "max": 2025,
+      "per_year": [
+        {
+          "value": "2025",
+          "count": 6
+        }
+      ]
+    },
+    "document_types": [
+      {
+        "value": "Article",
+        "count": 6
+      }
+    ],
+    "authors": {
+      "mentions": 16,
+      "unique_names": 9,
+      "per_article": {
+        "min": 2,
+        "median": 2.5,
+        "mean": 2.67,
+        "max": 4
+      },
+      "articles_over_mega_threshold": 0,
+      "mega_threshold": 15
+    },
+    "articles_with_orcid_pct": 66.7,
+    "keywords": {
+      "author_keywords": {
+        "articles_with_pct": 100.0,
+        "unique": 10,
+        "top": [
+          {
+            "value": "fetal ultrasound",
+            "count": 3
+          },
+          {
+            "value": "deep learning",
+            "count": 3
+          },
+          {
+            "value": "gynecology oncology",
+            "count": 2
+          },
+          {
+            "value": "heart failure",
+            "count": 2
+          },
+          {
+            "value": "bibliometric analysis",
+            "count": 2
+          },
+          {
+            "value": "citespace",
+            "count": 2
+          },
+          {
+            "value": "image segmentation",
+            "count": 1
+          },
+          {
+            "value": "large language models",
+            "count": 1
+          },
+          {
+            "value": "ethics",
+            "count": 1
+          },
+          {
+            "value": "medical education",
+            "count": 1
+          }
+        ]
+      },
+      "keywords_plus": {
+        "articles_with_pct": 0.0,
+        "unique": 0,
+        "top": []
+      }
+    },
+    "corresponding_author": {
+      "resolved_pct": 100.0,
+      "top_countries": [
+        {
+          "value": "Peoples R China",
+          "count": 3
+        },
+        {
+          "value": "Italy",
+          "count": 2
+        },
+        {
+          "value": "USA",
+          "count": 1
+        }
+      ],
+      "top_institutions": [
+        {
+          "value": "Univ Parma",
+          "count": 2
+        },
+        {
+          "value": "Fudan Univ",
+          "count": 2
+        },
+        {
+          "value": "Mayo Clin",
+          "count": 1
+        },
+        {
+          "value": "Peking Univ",
+          "count": 1
+        }
+      ]
+    }
+  }
+}
