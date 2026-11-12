@@ -45,12 +45,24 @@ class DatasetFileOut(BaseModel):
     sha256: str
 
 
+ProfileStatus = Literal["pending", "ready", "failed"]
+
+
 class DatasetOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     name: str
     created_at: datetime
+    profile_status: ProfileStatus
+    profile_error: str | None
     files: list[DatasetFileOut]
+
+
+class DatasetProfileOut(BaseModel):
+    """Schema, sample rows and statistics (see pipeline/profile.py); null until ready."""
+    status: ProfileStatus
+    error: str | None
+    profile: dict | None
 
 
 # ---------------------------------------------------------------- runs

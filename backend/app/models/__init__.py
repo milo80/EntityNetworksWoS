@@ -60,6 +60,16 @@ class Dataset(Base):
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Schema/sample/statistics (pipeline.profile), computed by the worker after upload.
+    profile_status: Mapped[str] = mapped_column(String(20), default="pending",
+                                                server_default="pending", index=True)
+    profile_error: Mapped[str | None] = mapped_column(Text)
+    profile: Mapped[dict[str, Any] | None] = deferred(mapped_column(JSONB))
+
+    __table_args__ = (
+        CheckConstraint("profile_status IN ('pending', 'ready', 'failed')",
+                        name="profile_status"),
+    )
 
     files: Mapped[list[DatasetFile]] = relationship(
         back_populates="dataset", cascade="all, delete-orphan", passive_deletes=True,

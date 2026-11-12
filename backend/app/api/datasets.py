@@ -11,7 +11,7 @@ from ..auth.sessions import CurrentUser
 from ..config import Settings, get_settings
 from ..db import get_db
 from ..models import Dataset, DatasetFile
-from ..schemas.api import DatasetOut
+from ..schemas.api import DatasetOut, DatasetProfileOut
 from ..services.storage import UploadRejected, dataset_dir, remove_dataset_dir, save_upload
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
@@ -73,6 +73,14 @@ def list_datasets(user: CurrentUser, db: Db) -> list[Dataset]:
 @router.get("/{dataset_id}", response_model=DatasetOut)
 def get_dataset(dataset_id: int, user: CurrentUser, db: Db) -> Dataset:
     return get_owned_dataset(db, user.id, dataset_id)
+
+
+@router.get("/{dataset_id}/profile", response_model=DatasetProfileOut)
+def get_dataset_profile(dataset_id: int, user: CurrentUser, db: Db) -> DatasetProfileOut:
+    """Schema, sample and statistics of the uploaded data. Poll while status is 'pending'."""
+    dataset = get_owned_dataset(db, user.id, dataset_id)
+    return DatasetProfileOut(status=dataset.profile_status, error=dataset.profile_error,
+                             profile=dataset.profile if dataset.profile_status == "ready" else None)
 
 
 @router.delete("/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)

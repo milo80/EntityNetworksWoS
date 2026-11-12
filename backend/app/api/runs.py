@@ -10,6 +10,7 @@ from ..auth.sessions import CurrentUser
 from ..db import get_db
 from ..models import NetworkRun
 from ..schemas.api import RunCreate, RunOut
+from ..schemas.network import Network
 from .datasets import get_owned_dataset
 
 router = APIRouter(prefix="/runs", tags=["runs"])
@@ -75,8 +76,8 @@ def _network_response(run_id: int, request: Request, user_id: int, db: Session,
     return Response(content=body, media_type="application/json", headers=headers)
 
 
-@router.get("/{run_id}/network", responses={200: {"description": "Network JSON "
-                                                  "(see docs/network.schema.json)"}})
+@router.get("/{run_id}/network", responses={200: {
+    "model": Network, "description": "Network JSON (see docs/network.schema.json)"}})
 def get_network(run_id: int, request: Request, user: CurrentUser, db: Db) -> Response:
     return _network_response(run_id, request, user.id, db, download=False)
 

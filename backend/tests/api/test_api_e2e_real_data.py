@@ -32,3 +32,9 @@ def test_real_upload_reproduces_golden(client, db, settings, relation, golden):
 
     network = client.get(f"/api/runs/{run.json()['id']}/network").json()
     assert network == json.loads((GOLDEN_DIR / golden).read_text(encoding="utf-8"))
+
+    # The same worker pass profiled the dataset.
+    profile = client.get(f"/api/datasets/{ds.json()['id']}/profile").json()
+    assert profile["status"] == "ready", profile
+    assert profile["profile"]["stats"]["articles"] == 3000
+    assert len(profile["profile"]["schema"]) == 72

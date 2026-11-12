@@ -1,6 +1,8 @@
-"""Background worker: executes queued network runs.
+"""Background worker: profiles newly uploaded datasets and executes queued network runs.
 
     python -m app.worker
+
+Uploaded files are parsed only here, never in the API process.
 
 The network_runs table is the queue. A run is claimed with
 SELECT ... FOR UPDATE SKIP LOCKED, so jobs survive restarts and no broker
@@ -20,7 +22,8 @@ from pathlib import Path
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from pipeline.io import WoSReadError
+from pipeline.io import WoSReadError, read_wos_files
+from pipeline.profile import profile_dataset
 
 from .config import Settings, get_settings
 from .db import get_sessionmaker, utcnow
@@ -61,20 +64,58 @@ def claim_next_run(db: Session) -> NetworkRun | None:
     return run
 
 
-def _user_facing_error(exc: Exception) -> str:
+def _user_facing_error(exc: Exception,
+                       generic: str = "The network could not be built from these files "
+                                      "(see server logs)") -> str:
     if isinstance(exc, WoSReadError):
         return str(exc)[:MAX_ERROR_LEN]
     if isinstance(exc, KeyError):  # a required WoS column is missing
         return f"The uploaded files are missing a required WoS column: {exc}"[:MAX_ERROR_LEN]
-    return "The network could not be built from these files (see server logs)"
+    return generic
+
+
+def dataset_file_paths(dataset: Dataset | None, settings: Settings) -> list[Path]:
+    """A dataset's files on disk, in a deterministic order.
+
+    Stored names are random, so order by the original names: results then don't
+    depend on upload order, and match the CLI run on the same folder.
+    """
+    if dataset is None:
+        return []
+    ordered = sorted(dataset.files, key=lambda f: (f.original_name, f.id))
+    return [dataset_dir(settings.upload_dir, dataset.id) / f.stored_name for f in ordered]
+
+
+def profile_next_dataset(db: Session, settings: Settings) -> bool:
+    """Compute the profile of one pending dataset. Returns True if one was processed.
+
+    The row stays locked (FOR UPDATE SKIP LOCKED) while profiling - about a second
+    for the 14 MB sample - so a crash leaves it 'pending' and it is retried.
+    """
+    dataset = db.scalars(select(Dataset).where(Dataset.profile_status == "pending")
+                         .order_by(Dataset.id).limit(1)
+                         .with_for_update(skip_locked=True)).first()
+    if dataset is None:
+        db.rollback()
+        return False
+    files = dataset_file_paths(dataset, settings)
+    try:
+        if not files:
+            raise WoSReadError("Dataset has no files")
+        dataset.profile = profile_dataset(read_wos_files(files))
+        dataset.profile_status, dataset.profile_error = "ready", None
+    except Exception as exc:
+        log.exception("Profiling dataset %d failed", dataset.id)
+        dataset.profile_status = "failed"
+        dataset.profile_error = _user_facing_error(
+            exc, "These files could not be read as WoS exports (see server logs)")
+    db.commit()
+    log.info("Dataset %d profile: %s", dataset.id, dataset.profile_status)
+    return True
 
 
 def execute_run(db: Session, run: NetworkRun, settings: Settings) -> None:
-    dataset = db.get(Dataset, run.dataset_id)
-    # Stored names are random, so order by the original names: the result then
-    # doesn't depend on upload order, and matches the CLI run on the same folder.
-    ordered = sorted(dataset.files, key=lambda f: (f.original_name, f.id)) if dataset else []
-    files = [dataset_dir(settings.upload_dir, dataset.id) / f.stored_name for f in ordered]
+    files = dataset_file_paths(db.get(Dataset, run.dataset_id), settings)
     db.commit()  # end the read transaction; don't sit "idle in transaction" while building
     log.info("Run %d: building %s network from %d file(s)", run.id, run.relation, len(files))
     try:
@@ -95,12 +136,13 @@ def execute_run(db: Session, run: NetworkRun, settings: Settings) -> None:
 
 
 def run_once(db: Session, settings: Settings) -> bool:
-    """Process at most one queued run. Returns True if one was processed."""
+    """One worker iteration: profile at most one pending dataset (fast), then
+    execute at most one queued run. Returns True if anything was processed."""
+    profiled = profile_next_dataset(db, settings)
     run = claim_next_run(db)
-    if run is None:
-        return False
-    execute_run(db, run, settings)
-    return True
+    if run is not None:
+        execute_run(db, run, settings)
+    return profiled or run is not None
 
 
 def main() -> None:
