@@ -192,3 +192,18 @@ Known open items:
   `httpx`. Not switched yet: the package wasn't vetted. Harmless for now.
 - uvicorn's own access log lines are plain text, not JSON like the app logs;
   give uvicorn a log config in step 6.
+
+Smoke test (backend/scripts/smoke_test.py)
+
+pytest runs the app in-process (TestClient, worker called as a function), so it
+can't see process-level problems. The smoke test checks the assembled system
+from the outside: a real server, a separate worker process, real cookies and
+multipart uploads, configuration from the environment. It is not a substitute
+for the API tests (most of its checks are also covered there) and is not part
+of the pytest suite, since it needs running servers. Step 6 runs it in CI after
+`docker compose up` and after each deploy; it exits non-zero on the first
+failure and cleans up after itself.
+Crash recovery is checked manually, locally: queue a run, `kill -9` the worker
+while the run is 'running', start a new worker, and it logs "Recovered 1
+orphaned run(s)" and finishes the run. (When finding the worker PID, don't use
+`pgrep -f 'app.worker'` from a script - it also matches the script's own shell.)

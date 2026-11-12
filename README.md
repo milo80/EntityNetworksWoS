@@ -66,6 +66,21 @@ Run exactly one worker (see docs/design-notes.md).
   they are skipped if PostgreSQL isn't reachable.
 - Golden and real-data end-to-end tests need `data/wos/`; skipped otherwise.
 
+### Smoke test (running system)
+
+Checks a running API + worker + database over HTTP: health, login, CSRF
+rejection, upload, network build, download (schema, ETag), optional comparison
+with a golden file, cleanup, logout. It deletes what it uploaded.
+
+    COOKIE_SECURE=false .venv/bin/uvicorn app.main:app --port 8000 &
+    .venv/bin/python -m app.worker &
+    .venv/bin/python scripts/smoke_test.py --register \
+        --email smoke@example.org --password 'some-long-password' \
+        --golden tests/fixtures/golden/network_author.json
+
+Against production (registration off) pre-create the account with
+`python -m app.manage create-user` and pass `SMOKE_EMAIL` / `SMOKE_PASSWORD`.
+
 ## API
 
 | Method | Path | |
