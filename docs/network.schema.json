@@ -1,0 +1,162 @@
+{
+  "$defs": {
+    "NetworkEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "target": {
+          "minLength": 1,
+          "title": "Target",
+          "type": "string"
+        },
+        "type": {
+          "description": "Relationship, e.g. collaborates_with, shares_keywords_with. Drives the Relationship filter.",
+          "minLength": 1,
+          "title": "Type",
+          "type": "string"
+        },
+        "weight": {
+          "description": "Strength, e.g. number of shared articles.",
+          "minimum": 1,
+          "title": "Weight",
+          "type": "integer"
+        },
+        "attr": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ]
+              },
+              "description": "Display/search-only attributes. Never drives color or the Group/Relationship filters. Empty values are omitted.",
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Attr"
+        }
+      },
+      "required": [
+        "source",
+        "target",
+        "type",
+        "weight"
+      ],
+      "title": "NetworkEdge",
+      "type": "object"
+    },
+    "NetworkNode": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "ORCID, LOCAL-<hash>, or an institution/country name. Never a raw author name.",
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "description": "Human-readable display name.",
+          "title": "Name",
+          "type": "string"
+        },
+        "team": {
+          "description": "Drives node color and the Group filter. 'other' = real value outside the top-N; 'unknown' = no value.",
+          "minLength": 1,
+          "title": "Team",
+          "type": "string"
+        },
+        "role": {
+          "description": "Short description, e.g. '14 co-authors'.",
+          "title": "Role",
+          "type": "string"
+        },
+        "attr": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ]
+              },
+              "description": "Display/search-only attributes. Never drives color or the Group/Relationship filters. Empty values are omitted.",
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Attr"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "team",
+        "role"
+      ],
+      "title": "NetworkNode",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "nodes": {
+      "items": {
+        "$ref": "#/$defs/NetworkNode"
+      },
+      "title": "Nodes",
+      "type": "array"
+    },
+    "edges": {
+      "items": {
+        "$ref": "#/$defs/NetworkEdge"
+      },
+      "title": "Edges",
+      "type": "array"
+    }
+  },
+  "required": [
+    "nodes",
+    "edges"
+  ],
+  "title": "EntityNetworks network",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

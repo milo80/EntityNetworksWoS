@@ -9675,7 +9675,7 @@
       "id": "LOCAL-1682149883e6",
       "name": "Hu, Zhixi",
       "team": "Peoples R China",
-      "role": "6 co-authors",
+      "role": "4 co-authors",
       "attr": {
         "institution": "Hunan Univ Chinese Med",
         "city": "Hunan",
@@ -37884,17 +37884,6 @@
       "target": "LOCAL-1682149883e6",
       "type": "collaborates_with",
       "weight": 2,
-      "attr": {
-        "article_titles": [
-          "Evolution of Research on Artificial Intelligence for Heart Failure: A Bibliometric and Visual Analysis"
-        ]
-      }
-    },
-    {
-      "source": "LOCAL-1682149883e6",
-      "target": "LOCAL-1682149883e6",
-      "type": "collaborates_with",
-      "weight": 1,
       "attr": {
         "article_titles": [
           "Evolution of Research on Artificial Intelligence for Heart Failure: A Bibliometric and Visual Analysis"

@@ -112,3 +112,23 @@ export_graph_to_json() became export.graph_to_network(), which returns a dict;
 file writing is pipeline.io.write_network_json(). Console prints became logging.
 .xls files are read with the calamine engine (xlrd is deprecated in pandas 3);
 both engines produce identical DataFrames on the sample data.
+
+
+Network JSON contract (step 3)
+
+The schema above is now formal: backend/pipeline/schema.py (Pydantic) is the
+single source of truth; docs/network.schema.json is generated from it with
+`python -m pipeline.schema` (a test fails if it is stale). Every relation built
+by pipeline.relations is validated before it is returned. Rules:
+- strict types, no coercion; unknown fields are rejected (on nodes, edges and root);
+- node ids unique and non-empty; team non-empty ("other" / "unknown" reserved);
+- edges must reference existing nodes; weight is an integer >= 1;
+- no self-loops, and no duplicate edge of the same type between the same pair
+  (direction ignored);
+- attr values: string, number, or list of strings; empty values are omitted, not null.
+
+Self-loop fix: WoS sometimes lists an author twice on one paper ("Hu, Zhixi;
+Hu, Zhixi"), which produced an author->same-author edge and inflated the
+"N co-authors" role by 2. create_author_network() now skips same-identity pairs.
+Effect on the sample data: one edge removed (3023 -> 3022) and one role fixed
+(6 -> 4 co-authors); nothing else changed. Goldens were regenerated.

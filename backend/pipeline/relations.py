@@ -21,6 +21,7 @@ from .export import graph_to_network
 from .institutions import enrich_with_institution_data, prepare_article_institution_data
 from .keywords import parse_keyword_columns
 from .networks import create_author_network, create_institution_keyword_network
+from .schema import validate_network
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,12 @@ class InstitutionKeywordParams:
     edge_attrs: tuple[str, ...] = ("shared_keywords",)
 
 
+def _validated(network: dict) -> dict:
+    """Fail fast if the pipeline ever emits something outside the JSON contract."""
+    validate_network(network)
+    return network
+
+
 def prepare_articles(df: pd.DataFrame, max_authors: int = 15) -> pd.DataFrame:
     """Shared article-level preparation: author lists + mega-paper filter."""
     df = prepare_author_lists(df, report=True)
@@ -66,12 +73,12 @@ def author_network(articles: pd.DataFrame, params: AuthorNetworkParams | None = 
     """Co-authorship network JSON (edge type 'collaborates_with')."""
     params = params or AuthorNetworkParams()
     G = build_author_graph(articles)
-    return graph_to_network(
+    return _validated(graph_to_network(
         G, top_n=params.top_n, edge_type="collaborates_with", role_suffix="co-authors",
         team_attribute=params.team_attribute, max_team_categories=params.max_team_categories,
         min_team_size=params.min_team_size, node_attrs=params.node_attrs,
         edge_attrs=params.edge_attrs,
-    )
+    ))
 
 
 def institution_keyword_network(articles: pd.DataFrame,
@@ -83,12 +90,12 @@ def institution_keyword_network(articles: pd.DataFrame,
         df_inst, group_column=params.group_column, max_keyword_df=params.max_keyword_df,
         min_shared_keywords=params.min_shared_keywords,
     )
-    return graph_to_network(
+    return _validated(graph_to_network(
         G, top_n=params.top_n, edge_type="shares_keywords_with",
         role_suffix="keyword-linked institutions", team_attribute=params.team_attribute,
         max_team_categories=params.max_team_categories, min_team_size=params.min_team_size,
         node_attrs=params.node_attrs, edge_attrs=params.edge_attrs,
-    )
+    ))
 
 
 RELATIONS = {

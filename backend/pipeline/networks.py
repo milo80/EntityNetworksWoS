@@ -81,6 +81,12 @@ def create_author_network(df_exploded: pd.DataFrame, id_column: str = "author_id
         for i in range(len(authors_list)):
             for j in range(i + 1, len(authors_list)):
                 a, b = authors_list[i], authors_list[j]
+                if a == b:
+                    # Same identity twice on one paper: WoS sometimes lists an author
+                    # twice ("Hu, Zhixi; Hu, Zhixi"), or two spellings resolve to the
+                    # same ORCID. Not a collaboration - and a self-loop would add 2
+                    # to the node's degree ("N co-authors").
+                    continue
                 record = {"id": article_id, "title": article_title,
                           "level_a": levels[i], "level_b": levels[j]}
                 if G.has_edge(a, b):

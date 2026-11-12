@@ -7,6 +7,7 @@ dependencies = [
     "pandas>=2.2",
     "python-calamine>=0.2",
     "networkx>=3.3",
+    "pydantic>=2.7",
 ]
 
 [project.optional-dependencies]

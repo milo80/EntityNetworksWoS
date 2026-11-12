@@ -12,7 +12,7 @@ institution networks (co-authorship, shared-keyword collaboration).
 | `backend/tests/` | pytest (pipeline golden snapshots, API tests) |
 | `frontend/` | React + TypeScript + Vite UI (Cytoscape.js graph explorer) |
 | `deploy/` | Docker Compose, Caddyfile, backup script |
-| `docs/` | Design notes and the network JSON schema contract |
+| `docs/` | Design notes and `network.schema.json` (generated: `python -m pipeline.schema`) |
 | `legacy/` | Original demo, kept as the reference implementation |
 | `data/wos/` | Raw WoS `.xls` exports (local only, git-ignored) |
 
@@ -20,6 +20,8 @@ institution networks (co-authorship, shared-keyword collaboration).
 
 - Step 1 (done): repository skeleton.
 - Step 2 (done): pipeline refactored into `backend/pipeline/` with golden tests.
+- Step 3 (done): network JSON contract as a Pydantic model (`backend/pipeline/schema.py`),
+  enforced on every pipeline run; JSON Schema in `docs/network.schema.json`.
 - API, UI and deployment: not implemented yet.
 
 ## Pipeline quick start
