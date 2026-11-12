@@ -227,17 +227,32 @@ details panel shows the clicked node/link with all its attributes; clicking an
 entry in the Readable list selects and centres it in the graph. Below 1024 px
 the side panels become toggleable drawers.
 
-Group colors: a network graph is an all-pairs color problem (any two groups can
-sit side by side). Validated with the dataviz palette validator, the largest
-subset of the reference categorical palette passing all-pairs in light mode
-without CVD warnings is 4 colors (blue #2a78d6, yellow #eda100, magenta
-#e87ba4, green #008300; worst CVD dE 13, normal-vision dE 19.6). So the 4
-largest groups are colored, assigned once per network (colors never repaint
-when filtering); all other groups and "other" are neutral gray; "unknown" is a
-hollow node (distinct from "other" without relying on color). Yellow and
-magenta are below 3:1 contrast, which is acceptable because every group is
-also named in the filter list and the details panel. The prototype cycled 7
-colors over up to 22 groups, which made different countries share a color.
+Group colors: the 7 largest groups get the first 7 slots of the reference
+categorical palette in its fixed order (blue, orange, aqua, yellow, magenta,
+green, violet), assigned once per network (colors never repaint when
+filtering); all other groups and "other" are neutral gray; "unknown" is a
+hollow node (distinct from "other" without relying on color). A network graph
+is an all-pairs color problem (any two groups can sit side by side), and the
+palette validator fails 7 colors there: worst normal-vision pair blue/violet
+dE 10.5 (floor 15), worst color-blind pair green/orange dE 3.2. Only 4 colors
+pass all-pairs; 7 was chosen by the product owner for now, accepting that some
+pairs are hard to tell apart. Group names in the Group filter (the legend), the
+tooltip and the details panel are the secondary encoding. The prototype cycled
+7 colors over up to 22 groups, so different countries shared a color; here they
+never do (groups past the 7th are gray).
+
+Graph layout: cytoscape-fcose (spectral placement + force-directed refinement)
+with uniformNodeDimensions and initialEnergyOnIncremental 0.1. Measured headless
+on the 700-node / 3022-link author network: built-in cose 7.5 s (about 15 s in
+the browser), fcose defaults 4.1 s, fcose draft 0.3 s, chosen settings ~0.9 s.
+The layout still runs on the main thread when a network opens; if larger
+networks make that too slow, the next step is computing positions once in the
+worker and storing them with the run.
+
+Graph labels: Cytoscape scales text with the zoom; node labels are kept at a
+constant 14 px on screen (the Readable list's size) by re-evaluating the font
+size on zoom, and are shown only at zoom >= 1, except for search matches and
+the selected node.
 
 Dataset profile: computed by the worker right after upload (pipeline/profile.py),
 served by GET /api/datasets/{id}/profile; the API still never parses uploads.

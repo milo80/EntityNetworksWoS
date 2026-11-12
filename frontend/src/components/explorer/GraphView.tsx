@@ -1,11 +1,27 @@
 // Cytoscape wrapper. Builds the graph once per network; visibility, search
 // highlight and selection are applied as classes, so filtering never re-lays out.
 import cytoscape, { type Core, type ElementDefinition } from "cytoscape";
+import fcose from "cytoscape-fcose";
 import { useEffect, useRef, useState } from "react";
 
 import type { GroupStyle } from "../../lib/colors";
 import { prettyTeam, shortLabel, type Network } from "../../lib/network";
 import type { Selection } from "./types";
+
+cytoscape.use(fcose);
+
+// fcose: a fast spectral placement, then a short force-directed refinement. A low
+// initial energy keeps the refinement close to the spectral result: on the
+// 700-node / 3022-link author network this takes ~0.9 s headless, against 7.5 s
+// for the built-in "cose" layout (see docs/design-notes.md).
+const LAYOUT = {
+  name: "fcose",
+  animate: false,
+  randomize: true,
+  uniformNodeDimensions: true,
+  initialEnergyOnIncremental: 0.1,
+  padding: 30,
+} as const;
 
 interface Props {
   network: Network;
@@ -28,6 +44,10 @@ interface Tip {
 const INK = "#0b0b0b";
 const LINE = "#c3c2b7";
 const ACCENT = "#1c5cab";
+/** Node labels keep this on-screen size at any zoom: the Readable list's size (--text-sm). */
+const LABEL_PX = 14;
+/** Below this zoom only highlighted and selected nodes are labelled (avoids clutter). */
+const LABEL_MIN_ZOOM = 1;
 
 export function GraphView(props: Props) {
   const { network, styles, visibleNodeIds, visibleEdgeIdx, search, selected, onSelect } = props;
@@ -72,6 +92,11 @@ export function GraphView(props: Props) {
       })),
     ];
 
+    // Cytoscape scales text with the zoom; these style functions undo that, and
+    // are re-evaluated (see the "zoom" handler below) when the zoom changes.
+    let zoom = 1;
+    const fontFamily = getComputedStyle(document.body).fontFamily;
+
     const cy = cytoscape({
       container: container.current,
       elements,
@@ -85,11 +110,12 @@ export function GraphView(props: Props) {
             width: 14,
             height: 14,
             label: "data(label)",
-            "font-size": 10,
+            "font-size": () => LABEL_PX / zoom,
+            "font-family": fontFamily,
             color: INK,
             "text-valign": "bottom",
-            "text-margin-y": 3,
-            "min-zoomed-font-size": 9,
+            "text-margin-y": () => 4 / zoom,
+            "text-opacity": () => (zoom >= LABEL_MIN_ZOOM ? 1 : 0),
             "border-width": 0,
           },
         },
@@ -113,7 +139,7 @@ export function GraphView(props: Props) {
             "border-color": INK,
             width: 18,
             height: 18,
-            "min-zoomed-font-size": 0,
+            "text-opacity": 1,
             "font-weight": "bold",
             "z-index": 10,
           },
@@ -123,7 +149,7 @@ export function GraphView(props: Props) {
           style: {
             "border-width": 4,
             "border-color": ACCENT,
-            "min-zoomed-font-size": 0,
+            "text-opacity": 1,
             "z-index": 20,
           },
         },
@@ -151,9 +177,23 @@ export function GraphView(props: Props) {
     cy.on("mouseout", "node", () => setTip(null));
     cy.on("viewport", () => setTip(null));
 
+    // Re-apply the label size when the zoom changes by more than 2% (the drift
+    // in between is invisible), at most once per frame.
+    let frame = 0;
+    const applyZoom = () => {
+      frame = 0;
+      const z = cy.zoom();
+      if (Math.abs(z / zoom - 1) < 0.02 && z >= LABEL_MIN_ZOOM === zoom >= LABEL_MIN_ZOOM) return;
+      zoom = z;
+      cy.style().update();
+    };
+    cy.on("zoom", () => {
+      frame ||= window.requestAnimationFrame(applyZoom);
+    });
+
     // Lay out after first paint so the page shows up before the (CPU-heavy) layout.
     const handle = window.setTimeout(() => {
-      cy.layout({ name: "cose", animate: false, randomize: true, padding: 30 }).run();
+      cy.layout(LAYOUT).run();
       cy.fit(undefined, 30);
       setLaidOut(true);
     }, 0);
@@ -163,6 +203,7 @@ export function GraphView(props: Props) {
 
     return () => {
       window.clearTimeout(handle);
+      window.cancelAnimationFrame(frame);
       resize.disconnect();
       cy.destroy();
       cyRef.current = null;

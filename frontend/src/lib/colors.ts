@@ -1,19 +1,27 @@
 // Group (team) colors for the graph.
 //
-// A network graph puts any two groups side by side, so every PAIR of colors must
-// stay distinguishable (the "all pairs" case, like a scatter plot). Of the
-// reference categorical palette, the largest subset that passes all-pairs
-// validation in light mode with no colour-vision-deficiency warnings is these
-// four (worst CVD dE 13, normal-vision dE 19.6 - see docs/design-notes.md). So:
-//  - the 4 largest groups get these colors, assigned once per network (colors
-//    follow the group, they never repaint when filters change);
-//  - every other group, and "other", is neutral gray;
-//  - "unknown" (no value at all) is a hollow node, distinct from "other" without
-//    relying on color.
-// Groups stay identifiable by name in the Group filter and the details panel.
+// The 7 largest groups get the first 7 slots of the reference categorical
+// palette, in its fixed order, assigned once per network (colors follow the
+// group and never repaint when filters change). Every other group, and "other",
+// is neutral gray; "unknown" (no value at all) is a hollow node, distinct from
+// "other" without relying on color.
+//
+// Known limitation (chosen deliberately, see docs/design-notes.md): a network
+// graph can put any two groups side by side, and with 7 colors some pairs are
+// hard to tell apart (blue/violet; green/orange for color-blind readers). Group
+// names in the Group filter (the legend), the tooltip and the details panel are
+// the secondary encoding.
 import { TEAM_OTHER, TEAM_UNKNOWN, type Network } from "./network";
 
-export const GROUP_PALETTE = ["#2a78d6", "#eda100", "#e87ba4", "#008300"] as const;
+export const GROUP_PALETTE = [
+  "#2a78d6", // blue
+  "#eb6834", // orange
+  "#1baf7a", // aqua
+  "#eda100", // yellow
+  "#e87ba4", // magenta
+  "#008300", // green
+  "#6250d6", // violet
+] as const;
 export const NEUTRAL = "#898781";
 
 export interface GroupStyle {
