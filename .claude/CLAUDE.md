@@ -2,21 +2,32 @@
 
 ## Network graph (Cytoscape) conventions
 
-- **Node labels keep a constant on-screen size at every zoom**, equal to the
-  side-panel list text (`--text-sm`, 14 px) and in the UI font. Cytoscape scales
-  text with the zoom by default, which makes labels huge when zoomed in. Undo it
-  with style functions (`"font-size": () => LABEL_PX / zoom`, same for
-  `text-margin-y`) and call `cy.style().update()` on `zoom`, at most once per
-  animation frame and only when the zoom changed by more than 2%. Don't use
-  `min-zoomed-font-size` to hide labels; use `text-opacity` below a zoom
-  threshold, and always label search matches and the selected node.
-  Reference: `frontend/src/components/explorer/GraphView.tsx`.
-- **Layout:** `cytoscape-fcose` with `uniformNodeDimensions: true` and
-  `initialEnergyOnIncremental: 0.1` (~1.5 s in the browser for 700 nodes / 3000
-  links). Lowering `numIter` doesn't speed it up. Measure on
-  `backend/tests/fixtures/golden/network_author.json` before changing it.
-- **Group colors:** the 7 largest groups get the first 7 slots of the reference
-  categorical palette (fixed order, assigned once per network, never repainted
-  by filters); the rest and "other" are gray; "unknown" is hollow. Group names in
-  the filter list, tooltip and details panel are the secondary encoding.
-  Reference: `frontend/src/lib/colors.ts`, `docs/design-notes.md`.
+- **Labels keep a constant on-screen size at every zoom**, matching the
+  side-panel text and font. Hide them at low zoom with `text-opacity`, not
+  `min-zoomed-font-size`, but always label search matches and the selected
+  node. Keep the zoom handler throttled. See `GraphView.tsx`.
+- **Layout (fcose):** before changing its options, measure on
+  `backend/tests/fixtures/golden/network_author.json`. Lowering `numIter`
+  doesn't make it faster.
+- **Group colors are stable:** assigned once per network by group size, never
+  repainted by filters; overflow groups are gray, "unknown" is hollow. Group
+  names in the UI are the secondary encoding. See `frontend/src/lib/colors.ts`
+  and `docs/design-notes.md`.
+
+## Deployment and tests
+
+- **`deploy/compose.yaml` is the complete list of what runs.** No new service
+  without approval (see the user-level rules).
+- **Pinned runtimes:** Node 22 and PostgreSQL 16 everywhere, and the same Python
+  version in the Dockerfile and local dev.
+- **QA and PROD run the same stack.** Same images and compose services; only
+  configuration differs. Images are built once in CI and promoted from QA to
+  PROD without rebuilding. *(Target, not yet implemented: today
+  `deploy/README.md` builds the images on the server.)*
+- **Tests run in CI, not on servers.** Unit and integration tests run in CI jobs
+  on throwaway runners. The smoke test and Playwright e2e run from CI against QA.
+  *(Target, not yet implemented: no QA server yet; CI runs them against a
+  throwaway Compose stack on the runner.)* Test tools are never deployed to QA
+  or PROD.
+- **The test:** a fresh clone plus `podman compose up --build` in `deploy/` works
+  with nothing installed but podman.
