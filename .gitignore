@@ -30,3 +30,9 @@ frontend/dist/
 
 # Local runtime data (uploads, logs)
 backend/var/
+
+# Deployment
+deploy/backups/
+# Playwright
+frontend/test-results/
+frontend/playwright-report/

@@ -133,3 +133,21 @@ def test_delete_run(client, dataset):
     run = _create_run(client, dataset["id"]).json()
     assert client.delete(f"/api/runs/{run['id']}").status_code == 204
     assert client.get("/api/runs").json() == []
+
+
+def test_only_one_worker_can_hold_the_lock(db, settings):
+    from app.db import get_engine
+    from app.worker import acquire_worker_lock
+
+    first_engine, second_engine = get_engine(), get_engine()  # two separate pools
+    first = acquire_worker_lock(first_engine)
+    assert first is not None
+    try:
+        assert acquire_worker_lock(second_engine) is None
+    finally:
+        first.close()
+    again = acquire_worker_lock(second_engine)  # released with the connection
+    assert again is not None
+    again.close()
+    first_engine.dispose()
+    second_engine.dispose()

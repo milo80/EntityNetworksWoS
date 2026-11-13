@@ -176,7 +176,10 @@ then marks them failed). This assumes exactly ONE worker process: a second
 worker starting up would requeue a run the first is still processing. Seen in
 practice during smoke testing, when a previous session's processes survived a
 restart. Deployment must guarantee a single worker; more workers would need a
-heartbeat column instead.
+heartbeat column instead. Step 6 enforces it: the worker holds a PostgreSQL
+advisory lock for its lifetime, on a connection detached from the pool (closing a
+pooled connection only returns it to the pool, which would keep the lock), so a
+second worker exits with an error.
 
 Network responses are served straight from Postgres (JSONB cast to text, no
 re-parse in Python) with ETag "run-<id>" (a succeeded run never changes) and
@@ -190,8 +193,8 @@ to commit), so they also run in CI without the licensed WoS sample.
 Known open items:
 - Starlette warns that its TestClient will want the `httpx2` package instead of
   `httpx`. Not switched yet: the package wasn't vetted. Harmless for now.
-- uvicorn's own access log lines are plain text, not JSON like the app logs;
-  give uvicorn a log config in step 6.
+- (Fixed in step 6) uvicorn's access log lines are now JSON too
+  (`app/log_config.json`).
 
 Smoke test (backend/scripts/smoke_test.py)
 
@@ -261,3 +264,36 @@ found by the fixture-consistency test.
 
 Bundling: the Explorer (Cytoscape, ~146 KB gzip) is lazy-loaded; the rest of the
 app is ~100 KB gzip.
+
+
+Deployment (step 6)
+
+Docker Compose: web (Caddy + built UI), api, worker, db, and a one-off migrate
+service that api/worker wait for. The same compose.yaml runs with Docker and
+Podman. Only Caddy publishes ports. Images: python:3.14-slim (non-root, pip
+installs pinned by backend/constraints.txt), node build stage + caddy:alpine.
+The Caddyfile is mounted, not baked in, so one web image serves every site.
+
+Caddy: automatic TLS (Let's Encrypt for a domain, its local CA for localhost),
+zstd/gzip, HSTS, a strict CSP (default-src 'self', no 'unsafe-inline'; React
+and Cytoscape set styles through the DOM, which CSP allows), nosniff,
+Referrer-Policy, Permissions-Policy, frame-ancestors 'none', no Server header
+(uvicorn runs with --no-server-header). request_body max_size closes the
+upload-size limitation above: oversized requests get 413 before the API.
+Hashed /assets/* are cached immutable, everything else no-cache.
+
+API process: one uvicorn process (in-memory rate limiter), --proxy-headers so
+the rate limiter sees the client IP from Caddy.
+
+CI without licensed data: backend/tests/fixtures/synthetic_wos.xls is the
+synthetic fixture written as a real legacy .xls (scripts/make_synthetic_xls.py,
+xlwt; a test keeps it in sync). The CI "stack" job builds the images, starts
+the stack over HTTPS, runs the smoke test with --proxy (UI served, deep links,
+security headers, compressed network JSON), checks that a second worker
+refuses to start, runs the Playwright journey (desktop and tablet widths; fails
+on any console error, which is how CSP violations surface) and the backup
+script. mypy now runs in CI (pydantic plugin; pandas/networkx untyped).
+
+Not done: no server exists yet, so nothing is deployed; deploy/README.md is the
+runbook. Images are built on the server from git; a registry (GHCR) and
+automated deploys come when there is a server to deploy to.

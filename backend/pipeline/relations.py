@@ -6,7 +6,9 @@ parameters reproduce the networks produced by the legacy demo.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 import networkx as nx
 import pandas as pd
@@ -98,7 +100,8 @@ def institution_keyword_network(articles: pd.DataFrame,
     ))
 
 
-RELATIONS = {
+# relation name -> (build(articles, params) -> network dict, params dataclass)
+RELATIONS: dict[str, tuple[Callable[[pd.DataFrame, Any], dict], type[Any]]] = {
     "author": (author_network, AuthorNetworkParams),
     "institution_keywords": (institution_keyword_network, InstitutionKeywordParams),
 }

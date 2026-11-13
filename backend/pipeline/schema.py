@@ -80,7 +80,8 @@ class Network(_Strict):
                                      f"node {end!r}")
             if e.source == e.target:
                 raise ValueError(f"self-loop on node {e.source!r}")
-            key = (*sorted((e.source, e.target)), e.type)
+            low, high = sorted((e.source, e.target))
+            key = (low, high, e.type)
             if key in pairs:
                 raise ValueError(f"duplicate {e.type} edge between {e.source!r} and {e.target!r}")
             pairs.add(key)

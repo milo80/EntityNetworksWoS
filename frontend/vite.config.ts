@@ -12,9 +12,15 @@ export default defineConfig({
     port: 5173,
     proxy: { "/api": { target: API_TARGET, changeOrigin: false } },
   },
-  build: { sourcemap: true },
+  build: {
+    sourcemap: true,
+    // The explorer chunk is mostly Cytoscape (~580 kB, ~180 kB gzip). It is
+    // already split out and loaded only when a network is opened.
+    chunkSizeWarningLimit: 700,
+  },
   test: {
     environment: "jsdom",
+    include: ["src/**/*.test.{ts,tsx}"],
     setupFiles: ["./src/test/setup.ts"],
     css: false,
   },

@@ -10,6 +10,18 @@ import type { Selection } from "./types";
 
 cytoscape.use(fcose);
 
+// Cytoscape injects an inline <style> (`position: relative` for its container)
+// unless an element with this id already exists. The CSP forbids inline styles
+// (style-src 'self') and .graph-canvas is already positioned, so provide the
+// marker instead. Checked by the browser tests, which fail on CSP violations.
+const CYTOSCAPE_STYLESHEET_ID = "__________cytoscape_stylesheet";
+function preventCytoscapeInlineStyle() {
+  if (document.getElementById(CYTOSCAPE_STYLESHEET_ID)) return;
+  const marker = document.createElement("meta");
+  marker.id = CYTOSCAPE_STYLESHEET_ID;
+  document.head.appendChild(marker);
+}
+
 // fcose: a fast spectral placement, then a short force-directed refinement. A low
 // initial energy keeps the refinement close to the spectral result: on the
 // 700-node / 3022-link author network this takes ~0.9 s headless, against 7.5 s
@@ -97,6 +109,7 @@ export function GraphView(props: Props) {
     let zoom = 1;
     const fontFamily = getComputedStyle(document.body).fontFamily;
 
+    preventCytoscapeInlineStyle();
     const cy = cytoscape({
       container: container.current,
       elements,

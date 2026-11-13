@@ -47,7 +47,7 @@ def parse_address_block(address_str) -> list[dict]:
     if not isinstance(address_str, str) or not address_str.strip():
         return []
 
-    records = []
+    records: list[dict] = []
     for chunk in re.split(r";\s*(?=\[)", address_str):
         m = re.match(r"^\[([^\]]+)\]\s*(.+)$", chunk.strip())
         if not m:
@@ -84,7 +84,7 @@ def parse_reprint_address_block(reprint_str) -> list[dict]:
 
 def is_university(institution_name: str | None) -> bool:
     """Heuristic: WoS abbreviates universities as 'Univ' (misses e.g. 'MIT')."""
-    return bool(institution_name) and "univ" in institution_name.lower()
+    return institution_name is not None and "univ" in institution_name.lower()
 
 
 def pick_anchor_institution(records: list[dict]) -> dict | None:

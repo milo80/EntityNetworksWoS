@@ -9,7 +9,8 @@ SELECT ... FOR UPDATE SKIP LOCKED, so jobs survive restarts and no broker
 (Redis/Celery) is needed. Designed for ONE worker process: on startup, runs
 left 'running' by a crashed/killed worker are requeued (up to
 WORKER_MAX_ATTEMPTS) - with several workers that recovery step would need a
-heartbeat instead.
+heartbeat instead. A PostgreSQL advisory lock, held for the worker's lifetime,
+makes a second worker refuse to start.
 """
 
 from __future__ import annotations
@@ -18,8 +19,9 @@ import logging
 import signal
 import threading
 from pathlib import Path
+from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import Connection, Engine, select, text, update
 from sqlalchemy.orm import Session
 
 from pipeline.io import WoSReadError, read_wos_files
@@ -34,7 +36,24 @@ from .services.storage import dataset_dir
 
 log = logging.getLogger(__name__)
 
+# Arbitrary app-wide key for pg_try_advisory_lock ("EN" + 1).
+WORKER_LOCK_KEY = 0x454E_0001
+
 MAX_ERROR_LEN = 2000
+
+
+def acquire_worker_lock(engine: Engine) -> Connection | None:
+    """Hold the single-worker lock on a dedicated connection; None if another worker has it.
+
+    The lock is released when the connection closes, including when the process dies.
+    """
+    conn = engine.connect()
+    conn.detach()  # out of the pool, so close() really ends the session (and the lock)
+    if conn.execute(text("SELECT pg_try_advisory_lock(:k)"), {"k": WORKER_LOCK_KEY}).scalar():
+        conn.commit()  # the lock is session-level: it outlives this transaction
+        return conn
+    conn.close()
+    return None
 
 
 def recover_orphaned_runs(db: Session, max_attempts: int) -> int:
@@ -118,6 +137,7 @@ def execute_run(db: Session, run: NetworkRun, settings: Settings) -> None:
     files = dataset_file_paths(db.get(Dataset, run.dataset_id), settings)
     db.commit()  # end the read transaction; don't sit "idle in transaction" while building
     log.info("Run %d: building %s network from %d file(s)", run.id, run.relation, len(files))
+    values: dict[str, Any]
     try:
         if not files:
             raise WoSReadError("Dataset has no files")
@@ -153,6 +173,11 @@ def main() -> None:
         signal.signal(sig, lambda *_: stop.set())
 
     make_session = get_sessionmaker()
+    lock = acquire_worker_lock(make_session.kw["bind"])
+    if lock is None:
+        log.error("Another worker is already running (only one is supported); exiting")
+        raise SystemExit(1)
+
     with make_session() as db:
         recover_orphaned_runs(db, settings.worker_max_attempts)
     log.info("Worker started (poll every %.1fs)", settings.worker_poll_seconds)
@@ -166,6 +191,7 @@ def main() -> None:
             processed = False
         if not processed:
             stop.wait(settings.worker_poll_seconds)
+    lock.close()
     log.info("Worker stopped")
 
 

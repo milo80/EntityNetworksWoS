@@ -1,0 +1,44 @@
+# Reverse proxy and static UI. SITE_ADDRESS is the public domain in production
+# (Caddy then gets a Let's Encrypt certificate automatically) or "localhost"
+# for local/CI runs (certificate from Caddy's own local CA).
+{$SITE_ADDRESS:localhost} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		# The UI loads only its own files; React/Cytoscape set styles through the
+		# DOM (allowed), so no 'unsafe-inline' is needed.
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		-Server
+	}
+
+	handle /api/* {
+		# Uploads: up to 10 files x 50 MB (MAX_FILES_PER_DATASET x MAX_UPLOAD_MB)
+		# plus form overhead. Larger bodies get 413 here, before reaching the API.
+		request_body {
+			max_size {$MAX_REQUEST_BODY:510MB}
+		}
+		reverse_proxy api:8000
+	}
+
+	handle {
+		root * /srv
+		# Built files have content hashes in their names: cache forever.
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		@pages not path /assets/*
+		header @pages Cache-Control "no-cache"
+		# Client-side routes (/datasets/7, /runs/3...) all serve the SPA.
+		try_files {path} /index.html
+		file_server
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

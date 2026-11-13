@@ -9,9 +9,15 @@ Intended for local runs, CI after `docker compose up`, and after every deploy.
         --email smoke@example.org --password 'some-long-password' \\
         --golden tests/fixtures/golden/network_author.json
 
+    # the Docker Compose stack through Caddy (local TLS certificate):
+    python scripts/smoke_test.py --base-url https://localhost:8443 --insecure --proxy ...
+
     # production (registration disabled): pre-create the account once with
     #   python -m app.manage create-user smoke@example.org
     SMOKE_EMAIL=... SMOKE_PASSWORD=... python scripts/smoke_test.py --base-url https://...
+
+--proxy adds checks of the web server in front (Caddy): the UI is served, also
+for deep links, with the security headers, and the network JSON is compressed.
 
 Leaves nothing behind: the uploaded dataset (and its run) is deleted at the end
 unless --keep is given. Exit code 0 = all checks passed.
@@ -39,6 +45,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from compare_networks import compare
 
 CSRF_HEADER = "X-CSRF-Token"
+SECURITY_HEADERS = ("content-security-policy", "x-content-type-options", "referrer-policy",
+                    "permissions-policy")
 
 
 class SmokeFailure(Exception):
@@ -53,9 +61,11 @@ def expect(response: httpx.Response, status: int, what: str) -> httpx.Response:
 
 
 class Smoke:
-    def __init__(self, base_url: str, timeout: float):
+    def __init__(self, base_url: str, timeout: float, verify: bool | str = True):
+        self.site = httpx.Client(base_url=base_url.rstrip("/"), timeout=timeout,
+                                 follow_redirects=False, verify=verify)
         self.client = httpx.Client(base_url=base_url.rstrip("/") + "/api", timeout=timeout,
-                                   follow_redirects=False)
+                                   follow_redirects=False, verify=verify)
         self.csrf: str | None = None
         self.passed = 0
 
@@ -80,7 +90,8 @@ def run(args: argparse.Namespace) -> int:
     if not files:
         print(f"No .xls files in {args.wos_dir}", file=sys.stderr)
         return 2
-    s = Smoke(args.base_url, args.http_timeout)
+    verify: bool | str = False if args.insecure else (args.ca_cert or True)
+    s = Smoke(args.base_url, args.http_timeout, verify)
     state: dict = {}
     creds = {"email": args.email, "password": args.password}
 
@@ -89,6 +100,24 @@ def run(args: argparse.Namespace) -> int:
         if body.get("database") != "ok":
             raise SmokeFailure(f"health: {body}")
         return "database ok"
+
+    def web_front():
+        https = args.base_url.startswith("https://")
+        for path in ("/", "/datasets/1"):  # deep links fall back to the SPA's index.html
+            r = expect(s.site.get(path), 200, f"GET {path}")
+            if 'id="root"' not in r.text:
+                raise SmokeFailure(f"GET {path}: not the UI's index.html")
+        api = expect(s.client.get("/health"), 200, "health")
+        for resp, what in ((r, "UI"), (api, "API")):
+            missing = [h for h in SECURITY_HEADERS + (("strict-transport-security",) if https else ())
+                       if h not in resp.headers]
+            if missing:
+                raise SmokeFailure(f"{what} response lacks headers: {', '.join(missing)}")
+        if "default-src 'self'" not in r.headers["content-security-policy"]:
+            raise SmokeFailure(f"weak CSP: {r.headers['content-security-policy']}")
+        if "server" in api.headers and "uvicorn" in api.headers["server"].lower():
+            raise SmokeFailure("API responses reveal the uvicorn server header")
+        return "UI + deep link served, security headers present" + (", HSTS" if https else "")
 
     def register():
         r = s.client.post("/auth/register", json=creds)
@@ -155,7 +184,13 @@ def run(args: argparse.Namespace) -> int:
         expect(s.client.get(f"/runs/{run_['id']}/network", headers={"If-None-Match": etag}),
                304, "network with If-None-Match")
         state["network"] = r.json()
-        return f"valid against schema, {len(r.content) / 1e6:.1f} MB, ETag -> 304"
+        detail = f"valid against schema, {len(r.content) / 1e6:.1f} MB, ETag -> 304"
+        if args.proxy:
+            encoding = r.headers.get("content-encoding")
+            if encoding not in ("gzip", "zstd", "br"):
+                raise SmokeFailure("network JSON is not compressed by the proxy")
+            detail += f", sent {encoding}-compressed"
+        return detail
 
     def golden():
         expected = json.loads(Path(args.golden).read_text(encoding="utf-8"))
@@ -176,6 +211,8 @@ def run(args: argparse.Namespace) -> int:
         return "session invalidated"
 
     steps = [("health", health)]
+    if args.proxy:
+        steps.append(("web front (proxy)", web_front))
     if args.register:
         steps.append(("register", register))
     steps += [("login", login), ("current user", me),
@@ -199,6 +236,7 @@ def run(args: argparse.Namespace) -> int:
         return 1
     finally:
         s.client.close()
+        s.site.close()
     print(f"\nOK: {len(steps)}/{len(steps)} checks passed in {time.monotonic() - started:.0f}s")
     return 0
 
@@ -216,6 +254,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--golden", help="network JSON the result must equal")
     parser.add_argument("--timeout", type=float, default=180, help="seconds to wait for the run")
     parser.add_argument("--http-timeout", type=float, default=60, help="per-request timeout")
+    parser.add_argument("--proxy", action="store_true",
+                        help="also check the web server in front (UI, security headers, gzip)")
+    tls = parser.add_mutually_exclusive_group()
+    tls.add_argument("--ca-cert", help="CA certificate to trust (e.g. Caddy's local CA)")
+    tls.add_argument("--insecure", action="store_true", help="don't verify TLS certificates")
     parser.add_argument("--keep", action="store_true", help="don't delete the dataset at the end")
     args = parser.parse_args(argv)
     if not args.email or not args.password:

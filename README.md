@@ -11,7 +11,7 @@ institution networks (co-authorship, shared-keyword collaboration).
 | `backend/app/` | FastAPI service: auth, datasets, network runs, worker |
 | `backend/tests/` | pytest (pipeline golden snapshots, API tests) |
 | `frontend/` | React + TypeScript + Vite UI (Cytoscape.js graph explorer) |
-| `deploy/` | Docker Compose, Caddyfile, backup script |
+| `deploy/` | Docker Compose, Caddyfile, backup script, deployment runbook |
 | `docs/` | Design notes and `network.schema.json` (generated: `python -m pipeline.schema`) |
 | `legacy/` | Original demo, kept as the reference implementation |
 | `data/wos/` | Raw WoS `.xls` exports (local only, git-ignored) |
@@ -24,7 +24,10 @@ institution networks (co-authorship, shared-keyword collaboration).
   enforced on every pipeline run; JSON Schema in `docs/network.schema.json`.
 - Step 4 (done): FastAPI back-end - auth, dataset upload, network runs, worker,
   Alembic migrations, API tests against PostgreSQL.
-- UI and deployment: not implemented yet.
+- Step 5 (done): React UI - login, datasets, dataset data page, network explorer
+  (see `frontend/README.md`).
+- Step 6 (done, not yet deployed to a server): Docker Compose stack with Caddy,
+  CI, browser tests, backups - see [`deploy/README.md`](deploy/README.md).
 
 ## Setup
 
@@ -78,7 +81,8 @@ with a golden file, cleanup, logout. It deletes what it uploaded.
         --email smoke@example.org --password 'some-long-password' \
         --golden tests/fixtures/golden/network_author.json
 
-Against production (registration off) pre-create the account with
+Against the Compose stack add `--base-url https://localhost:8443 --insecure
+--proxy` (see `deploy/README.md`). Against production (registration off) pre-create the account with
 `python -m app.manage create-user` and pass `SMOKE_EMAIL` / `SMOKE_PASSWORD`.
 
 ## API

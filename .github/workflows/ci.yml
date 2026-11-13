@@ -1,0 +1,137 @@
+# Lint, type-check and test both halves, then build the real Compose stack and
+# drive it over HTTPS (smoke test + browser tests). No licensed WoS data is
+# needed: the golden/real-data tests skip, the stack uses a synthetic .xls.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.16-alpine
+        env:
+          POSTGRES_USER: entitynet
+          POSTGRES_PASSWORD: entitynet
+          POSTGRES_DB: entitynet
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U entitynet" --health-interval 5s
+          --health-timeout 3s --health-retries 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/constraints.txt
+      - run: pip install -c constraints.txt -e '.[api,dev]' pip-audit
+      - run: ruff check .
+      - run: mypy
+      - run: python -m pytest -q
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://entitynet:entitynet@localhost:5432/entitynet_test
+      - name: Known vulnerabilities in Python dependencies
+        run: pip-audit --strict --no-deps -r constraints.txt
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Generated API types match docs/openapi.json
+        run: npm run gen:api && git diff --exit-code src/api/schema.d.ts
+      - run: npm audit --audit-level=high
+
+  stack:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Configure the stack (local TLS, registration on for the tests)
+        working-directory: deploy
+        run: |
+          cat > .env <<EOT
+          SITE_ADDRESS=localhost
+          POSTGRES_PASSWORD=$(openssl rand -hex 24)
+          ALLOW_REGISTRATION=true
+          HTTP_PORT=8080
+          HTTPS_PORT=8443
+          TAG=${GITHUB_SHA}
+          EOT
+      - name: Build and start
+        working-directory: deploy
+        run: |
+          docker compose up -d --build
+          timeout 300 bash -c 'until curl -skf https://localhost:8443/api/health; do sleep 3; done'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/constraints.txt
+      - run: pip install -c backend/constraints.txt -e 'backend[api,dev]'
+      - name: Smoke test (HTTP API, proxy headers, compression)
+        working-directory: backend
+        run: >-
+          python scripts/smoke_test.py --base-url https://localhost:8443 --insecure --proxy
+          --register --email smoke@example.org --password "smoke-$(openssl rand -hex 8)"
+          --wos-dir tests/fixtures
+      - name: Only one worker can run
+        working-directory: deploy
+        run: |
+          if docker compose run --rm --no-deps worker; then
+            echo "a second worker started"; exit 1
+          fi
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Browser tests
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium-headless-shell
+          npm run e2e
+        env:
+          E2E_BASE_URL: https://localhost:8443
+      - name: Backup script
+        working-directory: deploy
+        run: ./backup.sh && ls -l backups
+      - name: Logs on failure
+        if: failure()
+        working-directory: deploy
+        run: docker compose logs --no-color --tail 300
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
+          retention-days: 7

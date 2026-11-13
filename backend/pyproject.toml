@@ -43,3 +43,14 @@ target-version = "py312"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["app", "pipeline"]
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+# No usable stubs: pandas-stubs lags pandas 3, networkx has none upstream.
+module = ["pandas", "pandas.*", "networkx", "networkx.*"]
+ignore_missing_imports = true

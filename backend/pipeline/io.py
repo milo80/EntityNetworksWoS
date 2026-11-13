@@ -26,12 +26,12 @@ def read_wos_files(paths: Iterable[str | Path], sheet_name: str = WOS_SHEET) -> 
     pass a deterministic order - read_wos_folder() sorts by file name, and the
     worker sorts a dataset's files by their original upload names.
     """
-    paths = [Path(p) for p in paths]
-    if not paths:
+    files = [Path(p) for p in paths]
+    if not files:
         raise WoSReadError("No WoS files given")
 
     dfs = []
-    for path in paths:
+    for path in files:
         try:
             df = pd.read_excel(path, sheet_name=sheet_name, engine="calamine")
         except Exception as exc:  # the reader raises a variety of types
