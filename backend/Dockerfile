@@ -1,5 +1,5 @@
 # API and worker image (same image, different command - see deploy/compose.yaml).
-FROM docker.io/library/python:3.14.10-slim
+FROM docker.io/library/python:3.15.0-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
