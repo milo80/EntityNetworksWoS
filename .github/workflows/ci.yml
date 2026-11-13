@@ -91,7 +91,7 @@ jobs:
         run: |
           docker compose up -d --build
           timeout 300 bash -c 'until curl -skf https://localhost:8443/api/health; do sleep 3; done'
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
           cache: pip
