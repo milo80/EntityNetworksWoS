@@ -1,6 +1,6 @@
 # Web image: Caddy serving the built UI. The Caddyfile is mounted at runtime
 # (deploy/Caddyfile), so the same image works for local, staging and production.
-FROM docker.io/library/node:22.23.5-alpine AS build
+FROM docker.io/library/node:26.13.0-alpine AS build
 WORKDIR /src
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
