@@ -1,4 +1,6 @@
 # Weekly dependency update PRs (security fixes arrive as soon as published).
+# Runtimes stay pinned (Node 22, the Python version used in local dev): a runtime
+# upgrade is one deliberate change to the images, CI and local dev together.
 version: 2
 updates:
   - package-ecosystem: pip
@@ -10,9 +12,19 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: "@types/node"   # follows the Node runtime (22)
+        update-types: [version-update:semver-major]
+      - dependency-name: typescript      # remove once typescript-eslint supports TS 7
+        update-types: [version-update:semver-major]
   - package-ecosystem: docker
     directories: [/backend, /frontend]
     schedule: { interval: weekly }
+    ignore:
+      - dependency-name: library/node    # Node 22
+        update-types: [version-update:semver-major]
+      - dependency-name: library/python  # 3.14.x patches only
+        update-types: [version-update:semver-major, version-update:semver-minor]
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
