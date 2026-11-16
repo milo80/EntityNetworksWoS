@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,9 +31,25 @@ class Settings(BaseSettings):
     csrf_cookie: str = "entitynet_csrf"
     csrf_header: str = "X-CSRF-Token"
 
+    # Password reset: emailed one-time link, valid this long.
+    password_reset_ttl_minutes: int = Field(30, ge=5)
+    # Where users open the app; reset links point here (no trailing slash).
+    public_base_url: str = "http://localhost:5173"
+
+    # Outgoing mail (SMTP, STARTTLS). Without SMTP_HOST nothing is sent: the
+    # message (including the reset link) is written to the log instead.
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_from: str | None = None
+    smtp_starttls: bool = True
+    smtp_timeout_seconds: float = Field(15.0, gt=0)
+
     # Rate limits (requests per minute per client IP; in-memory, single process)
     login_rate_per_minute: int = 10
     register_rate_per_minute: int = 5
+    password_reset_rate_per_minute: int = 5
     upload_rate_per_minute: int = 10
 
     # Only needed if the UI is served from a different origin than the API.
@@ -48,6 +64,9 @@ class Settings(BaseSettings):
     def _production_guards(self) -> Settings:
         if self.app_env == "production" and not self.cookie_secure:
             raise ValueError("COOKIE_SECURE must be true in production")
+        if self.smtp_host and not self.smtp_from:
+            raise ValueError("SMTP_FROM is required when SMTP_HOST is set")
+        self.public_base_url = self.public_base_url.rstrip("/")
         return self
 
     @property

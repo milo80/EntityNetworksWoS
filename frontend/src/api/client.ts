@@ -76,6 +76,16 @@ export const api = {
   register: (email: string, password: string) =>
     request<Session>("/auth/register", { method: "POST", body: json({ email, password }) }),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
+  requestPasswordReset: (email: string) =>
+    request<S["MessageOut"]>("/auth/password-reset/request", {
+      method: "POST",
+      body: json({ email }),
+    }),
+  confirmPasswordReset: (token: string, password: string) =>
+    request<void>("/auth/password-reset/confirm", {
+      method: "POST",
+      body: json({ token, password }),
+    }),
 
   listDatasets: () => request<Dataset[]>("/datasets"),
   getDataset: (id: number) => request<Dataset>(`/datasets/${id}`),

@@ -20,6 +20,13 @@ x-app: &app
     ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-false}
     MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
     MAX_FILES_PER_DATASET: ${MAX_FILES_PER_DATASET:-10}
+    # Password reset links point here; mail goes out over SMTP (see .env.example).
+    PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://${SITE_ADDRESS:-localhost}}
+    SMTP_HOST: ${SMTP_HOST:-}
+    SMTP_PORT: ${SMTP_PORT:-587}
+    SMTP_USERNAME: ${SMTP_USERNAME:-}
+    SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    SMTP_FROM: ${SMTP_FROM:-}
   volumes:
     - uploads:/data/uploads
 

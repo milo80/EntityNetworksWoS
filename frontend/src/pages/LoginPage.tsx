@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router";
+import { Link, Navigate, useLocation, useNavigate } from "react-router";
 
 import { api } from "../api/client";
 import { SESSION_KEY, useSession } from "../auth/session";
@@ -67,6 +67,15 @@ export function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
           />
           {!isLogin && <span className="hint">At least 10 characters.</span>}
+          {isLogin && (
+            <Link
+              className="btn-link small"
+              to="/forgot-password"
+              style={{ alignSelf: "flex-start" }}
+            >
+              Forgot password?
+            </Link>
+          )}
         </div>
         {submit.isError && (
           <p className="error" role="alert">

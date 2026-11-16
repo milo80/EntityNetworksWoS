@@ -7,6 +7,7 @@ import { DatasetDataPage } from "./pages/DatasetDataPage";
 import { DatasetPage } from "./pages/DatasetPage";
 import { DatasetsPage } from "./pages/DatasetsPage";
 import { LoginPage } from "./pages/LoginPage";
+import { ForgotPasswordPage, ResetPasswordPage } from "./pages/PasswordResetPages";
 
 // The explorer pulls in Cytoscape (most of the bundle): load it only when needed.
 const RunExplorerPage = lazy(() =>
@@ -23,6 +24,8 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route
         element={
           <RequireAuth>

@@ -51,6 +51,7 @@ cp .env.example .env
 #   POSTGRES_PASSWORD=$(openssl rand -hex 24)
 #   ALLOW_REGISTRATION=false
 #   TAG=$(git rev-parse --short HEAD)
+#   SMTP_* for password reset emails (see "Email" below)
 chmod 600 .env
 docker compose up -d --build
 docker compose exec api python -m app.manage create-user you@example.org --admin
@@ -63,6 +64,29 @@ Then:
 3. Add the backup cron job (below) and an uptime check on `https://<domain>/api/health`.
 
 Use the same steps for a staging server (its own domain and `.env`) before production.
+
+## Email (password reset)
+
+"Forgot password" on the login page emails a one-time link (valid 30 minutes,
+works once; using it logs the user out everywhere). The API sends it over SMTP
+with the `SMTP_*` values in `.env`; `.env.example` shows a Gmail setup. Use an
+account made only for sending, with an app password, so a leaked `.env` exposes
+nothing but an empty mailbox.
+
+Without `SMTP_HOST` nothing is sent and the link is written to the API log:
+
+```
+docker compose logs api | grep reset-password
+```
+
+Test it after setting SMTP up: ask for a reset for your own account and check
+that the email arrives (also look in spam) and its link opens this site. If
+email isn't working, an admin can set a password directly (this also logs the
+user out):
+
+```
+docker compose exec api python -m app.manage set-password someone@example.org
+```
 
 ## Updating
 

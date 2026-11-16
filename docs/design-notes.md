@@ -151,8 +151,15 @@ Decisions that differ from the original plan, and why:
   in X-CSRF-Token.
 - Rate limiting: a small in-memory fixed-window limiter instead of slowapi.
   Correct only for a single API process - which is the deployment model.
-- No password reset yet: it needs an email service. Admins can create accounts
-  with `python -m app.manage create-user`; ALLOW_REGISTRATION=false closes signup.
+- Password reset by emailed one-time link: a random 256-bit token, stored only
+  as SHA-256 (like sessions), single-use, valid PASSWORD_RESET_TTL_MINUTES (30),
+  and a new request voids older links. The request endpoint always answers 202
+  with the same text and does the lookup and the sending in a background task,
+  so neither the content nor the timing reveals whether an account exists.
+  Setting a password ends all of the user's sessions. Mail goes over SMTP with
+  stdlib smtplib (no extra service); without SMTP_HOST the message is logged
+  instead. Admins can also run `python -m app.manage set-password`, and create
+  accounts with `create-user`; ALLOW_REGISTRATION=false closes signup.
 - Login failures for unknown emails and wrong passwords return the same
   response and take the same time (Argon2 verify runs against a dummy hash).
 

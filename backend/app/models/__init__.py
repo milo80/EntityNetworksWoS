@@ -51,6 +51,21 @@ class UserSession(Base):
     user: Mapped[User] = relationship(lazy="joined")
 
 
+class PasswordResetToken(Base):
+    """One-time password reset link. Only a SHA-256 of the emailed token is stored."""
+
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped[User] = relationship(lazy="joined")
+
+
 class Dataset(Base):
     """A set of uploaded WoS export files."""
 

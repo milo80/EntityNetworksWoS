@@ -68,6 +68,56 @@ describe("login", () => {
   });
 });
 
+describe("password reset", () => {
+  const loggedOut = () => ({ status: 401, body: { detail: "Not authenticated" } });
+
+  it("asks for a link from the login page and shows the neutral answer", async () => {
+    const { calls } = mockApi({
+      "GET /auth/me": loggedOut,
+      "POST /auth/password-reset/request": () => ({
+        status: 202,
+        body: { detail: "If an account exists for that address, we've sent it a link." },
+      }),
+    });
+    const user = renderApp("/login");
+    await user.click(await screen.findByRole("link", { name: "Forgot password?" }));
+    await user.type(screen.getByLabelText("Email"), "ann@example.org");
+    await user.click(screen.getByRole("button", { name: "Send link" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("If an account exists");
+    const sent = calls.find((c) => c.path === "/auth/password-reset/request");
+    expect(sent?.body).toEqual({ email: "ann@example.org" });
+  });
+
+  it("sets a new password with the token from the link", async () => {
+    const { calls } = mockApi({
+      "GET /auth/me": loggedOut,
+      "POST /auth/password-reset/confirm": () => ({ status: 204 }),
+    });
+    const user = renderApp("/reset-password?token=tok-123");
+    await user.type(await screen.findByLabelText("New password"), "a brand new passphrase");
+    await user.click(screen.getByRole("button", { name: "Set password" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Your password was changed");
+    const sent = calls.find((c) => c.path === "/auth/password-reset/confirm");
+    expect(sent?.body).toEqual({ token: "tok-123", password: "a brand new passphrase" });
+    expect(screen.getByRole("link", { name: "Log in" })).toHaveAttribute("href", "/login");
+  });
+
+  it("explains an expired link and offers a new one", async () => {
+    mockApi({
+      "GET /auth/me": loggedOut,
+      "POST /auth/password-reset/confirm": () => ({
+        status: 400,
+        body: { detail: "This reset link is invalid or has expired. Ask for a new one." },
+      }),
+    });
+    const user = renderApp("/reset-password?token=old");
+    await user.type(await screen.findByLabelText("New password"), "a brand new passphrase");
+    await user.click(screen.getByRole("button", { name: "Set password" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("invalid or has expired");
+    expect(screen.getByRole("link", { name: "Ask for a new link" })).toBeInTheDocument();
+  });
+});
+
 describe("datasets", () => {
   it("uploads files with the CSRF header and opens the new dataset", async () => {
     document.cookie = "entitynet_csrf=token-123; path=/";

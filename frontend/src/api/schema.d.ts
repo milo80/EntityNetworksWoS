@@ -92,6 +92,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/password-reset/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Password Reset */
+        post: operations["request_password_reset_api_auth_password_reset_request_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/password-reset/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Password Reset */
+        post: operations["confirm_password_reset_api_auth_password_reset_confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasets": {
         parameters: {
             query?: never;
@@ -420,6 +454,11 @@ export interface components {
              */
             params: components["schemas"]["InstitutionKeywordParams"];
         };
+        /** MessageOut */
+        MessageOut: {
+            /** Detail */
+            detail: string;
+        };
         /** Network */
         Network: {
             /** Nodes */
@@ -474,6 +513,21 @@ export interface components {
             attr?: {
                 [key: string]: string | number | string[];
             } | null;
+        };
+        /** PasswordResetConfirm */
+        PasswordResetConfirm: {
+            /** Token */
+            token: string;
+            /** Password */
+            password: string;
+        };
+        /** PasswordResetRequest */
+        PasswordResetRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
         };
         /** Registration */
         Registration: {
@@ -685,6 +739,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionOut"];
+                };
+            };
+        };
+    };
+    request_password_reset_api_auth_password_reset_request_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_password_reset_api_auth_password_reset_confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordResetConfirm"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -27,13 +27,13 @@ from ..models import User, UserSession
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
-def _hash_token(token: str) -> str:
+def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
 def create_session(db: Session, user: User, response: Response, settings: Settings) -> UserSession:
     token = secrets.token_urlsafe(32)
-    session = UserSession(token_hash=_hash_token(token), csrf_token=secrets.token_urlsafe(32),
+    session = UserSession(token_hash=hash_token(token), csrf_token=secrets.token_urlsafe(32),
                           user_id=user.id,
                           expires_at=utcnow() + timedelta(hours=settings.session_ttl_hours))
     db.add(session)
@@ -59,7 +59,7 @@ def get_current_session(request: Request, db: Annotated[Session, Depends(get_db)
     token = request.cookies.get(settings.session_cookie)
     if not token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
-    session = db.scalar(select(UserSession).where(UserSession.token_hash == _hash_token(token)))
+    session = db.scalar(select(UserSession).where(UserSession.token_hash == hash_token(token)))
     if session is None or session.expires_at <= utcnow() or not session.user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session expired or invalid")
 
