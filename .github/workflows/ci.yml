@@ -42,6 +42,7 @@ jobs:
           cache-dependency-path: backend/constraints.txt
       - run: pip install -c constraints.txt -e '.[api,dev]' pip-audit
       - run: ruff check .
+      - run: ruff format --check .
       - run: mypy
       - run: python -m pytest -q
         env:
