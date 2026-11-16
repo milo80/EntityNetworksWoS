@@ -14,4 +14,5 @@ def articles():
         pytest.skip(f"WoS sample not present in {WOS_DIR} (not committed to git)")
     from pipeline.io import read_wos_folder
     from pipeline.relations import prepare_articles
+
     return prepare_articles(read_wos_folder(WOS_DIR))

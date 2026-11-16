@@ -39,8 +39,13 @@ def test_profile_of_synthetic_dataset():
 
 
 def test_profile_cells_are_json_safe_and_truncated():
-    df = pd.DataFrame({"a": [np.int64(3), np.nan], "b": ["x" * 500, None],
-                       "c": [np.float64(1.5), np.float64("nan")]})
+    df = pd.DataFrame(
+        {
+            "a": [np.int64(3), np.nan],
+            "b": ["x" * 500, None],
+            "c": [np.float64(1.5), np.float64("nan")],
+        }
+    )
     p = profile_dataset(df)
     json.dumps(p, allow_nan=False)
     row0, row1 = p["sample"]["rows"]
@@ -59,6 +64,10 @@ def test_profile_tolerates_missing_wos_columns():
 def test_frontend_profile_fixture_is_current():
     """frontend/src/test/synthetic_profile.json mirrors this output for UI tests."""
     from pathlib import Path
-    fixture = Path(__file__).resolve().parents[2] / "frontend" / "src" / "test" / "synthetic_profile.json"
-    assert json.loads(fixture.read_text(encoding="utf-8")) == profile_dataset(synthetic_wos_df()), \
+
+    fixture = (
+        Path(__file__).resolve().parents[2] / "frontend" / "src" / "test" / "synthetic_profile.json"
+    )
+    assert json.loads(fixture.read_text(encoding="utf-8")) == profile_dataset(synthetic_wos_df()), (
         "regenerate: see the command in frontend/src/test/mockApi.ts"
+    )

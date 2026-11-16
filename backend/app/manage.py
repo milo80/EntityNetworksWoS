@@ -1,7 +1,7 @@
 """Admin commands.
 
-    python -m app.manage create-user someone@example.org [--admin]   (prompts for the password)
-    python -m app.manage set-password someone@example.org            (prompts; logs the user out)
+python -m app.manage create-user someone@example.org [--admin]   (prompts for the password)
+python -m app.manage set-password someone@example.org            (prompts; logs the user out)
 """
 
 from __future__ import annotations
@@ -41,8 +41,13 @@ def create_user(email: str, admin: bool) -> int:
         if db.scalar(select(User).where(User.email == body.email.lower())):
             print(f"User {body.email} already exists", file=sys.stderr)
             return 1
-        db.add(User(email=body.email.lower(), password_hash=hash_password(body.password),
-                    role="admin" if admin else "user"))
+        db.add(
+            User(
+                email=body.email.lower(),
+                password_hash=hash_password(body.password),
+                role="admin" if admin else "user",
+            )
+        )
         db.commit()
     print(f"Created {'admin' if admin else 'user'} {body.email}")
     return 0
@@ -63,8 +68,9 @@ def set_password(email: str) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("create-user", help="create a user account")
     p.add_argument("email")

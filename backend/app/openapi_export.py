@@ -18,6 +18,7 @@ OPENAPI_PATH = Path(__file__).resolve().parents[2] / "docs" / "openapi.json"
 
 def render_openapi() -> str:
     from .main import create_app
+
     return json.dumps(create_app().openapi(), indent=2, ensure_ascii=False) + "\n"
 
 

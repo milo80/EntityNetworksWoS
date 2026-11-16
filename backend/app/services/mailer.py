@@ -21,8 +21,9 @@ log = logging.getLogger(__name__)
 
 def send_email(settings: Settings, to: str, subject: str, body: str) -> None:
     if not settings.smtp_host:
-        log.warning("SMTP_HOST is not set; email NOT sent. To: %s | Subject: %s\n%s",
-                    to, subject, body)
+        log.warning(
+            "SMTP_HOST is not set; email NOT sent. To: %s | Subject: %s\n%s", to, subject, body
+        )
         return
 
     msg = EmailMessage()
@@ -31,8 +32,9 @@ def send_email(settings: Settings, to: str, subject: str, body: str) -> None:
     msg["Subject"] = subject
     msg.set_content(body)
     try:
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port,
-                          timeout=settings.smtp_timeout_seconds) as smtp:
+        with smtplib.SMTP(
+            settings.smtp_host, settings.smtp_port, timeout=settings.smtp_timeout_seconds
+        ) as smtp:
             if settings.smtp_starttls:
                 smtp.starttls(context=ssl.create_default_context())
             if settings.smtp_username and settings.smtp_password:

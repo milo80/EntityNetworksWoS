@@ -65,7 +65,8 @@ def save_upload(upload: UploadFile, target_dir: Path, max_bytes: int) -> StoredF
                 size += len(chunk)
                 if size > max_bytes:
                     raise UploadRejected(
-                        f"{original}: larger than {max_bytes // (1024 * 1024)} MB", 413)
+                        f"{original}: larger than {max_bytes // (1024 * 1024)} MB", 413
+                    )
                 digest.update(chunk)
                 out.write(chunk)
         if size == 0:

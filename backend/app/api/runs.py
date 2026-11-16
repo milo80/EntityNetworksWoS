@@ -19,8 +19,9 @@ Db = Annotated[Session, Depends(get_db)]
 
 
 def get_owned_run(db: Session, user_id: int, run_id: int) -> NetworkRun:
-    run = db.scalar(select(NetworkRun).where(NetworkRun.id == run_id,
-                                             NetworkRun.owner_id == user_id))
+    run = db.scalar(
+        select(NetworkRun).where(NetworkRun.id == run_id, NetworkRun.owner_id == user_id)
+    )
     if run is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Run not found")
     return run
@@ -30,8 +31,12 @@ def get_owned_run(db: Session, user_id: int, run_id: int) -> NetworkRun:
 def create_run(body: Annotated[RunCreate, Body()], user: CurrentUser, db: Db) -> NetworkRun:
     """Queue a network build. Poll GET /runs/{id} until status is succeeded/failed."""
     get_owned_dataset(db, user.id, body.dataset_id)
-    run = NetworkRun(owner_id=user.id, dataset_id=body.dataset_id, relation=body.relation,
-                     params=body.params.model_dump())
+    run = NetworkRun(
+        owner_id=user.id,
+        dataset_id=body.dataset_id,
+        relation=body.relation,
+        params=body.params.model_dump(),
+    )
     db.add(run)
     db.commit()
     return run
@@ -56,8 +61,9 @@ def delete_run(run_id: int, user: CurrentUser, db: Db) -> None:
     db.commit()
 
 
-def _network_response(run_id: int, request: Request, user_id: int, db: Session,
-                      download: bool) -> Response:
+def _network_response(
+    run_id: int, request: Request, user_id: int, db: Session, download: bool
+) -> Response:
     run = get_owned_run(db, user_id, run_id)
     if run.status != "succeeded":
         raise HTTPException(status.HTTP_409_CONFLICT, f"Run is {run.status}, no network yet")
@@ -66,8 +72,9 @@ def _network_response(run_id: int, request: Request, user_id: int, db: Session,
     etag = f'"run-{run.id}"'
     headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
     if download:
-        headers["Content-Disposition"] = \
+        headers["Content-Disposition"] = (
             f'attachment; filename="network_{run.relation}_{run.id}.json"'
+        )
     elif request.headers.get("if-none-match") == etag:
         return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
 
@@ -76,8 +83,12 @@ def _network_response(run_id: int, request: Request, user_id: int, db: Session,
     return Response(content=body, media_type="application/json", headers=headers)
 
 
-@router.get("/{run_id}/network", responses={200: {
-    "model": Network, "description": "Network JSON (see docs/network.schema.json)"}})
+@router.get(
+    "/{run_id}/network",
+    responses={
+        200: {"model": Network, "description": "Network JSON (see docs/network.schema.json)"}
+    },
+)
 def get_network(run_id: int, request: Request, user: CurrentUser, db: Db) -> Response:
     return _network_response(run_id, request, user.id, db, download=False)
 

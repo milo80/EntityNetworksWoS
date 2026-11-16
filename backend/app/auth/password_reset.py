@@ -31,9 +31,13 @@ def create_reset_token(db: Session, user: User, settings: Settings) -> str:
     """Store a new token for ``user`` (voiding older ones) and return it in clear."""
     db.execute(delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
     token = secrets.token_urlsafe(32)
-    db.add(PasswordResetToken(
-        token_hash=hash_token(token), user_id=user.id,
-        expires_at=utcnow() + timedelta(minutes=settings.password_reset_ttl_minutes)))
+    db.add(
+        PasswordResetToken(
+            token_hash=hash_token(token),
+            user_id=user.id,
+            expires_at=utcnow() + timedelta(minutes=settings.password_reset_ttl_minutes),
+        )
+    )
     db.commit()
     return token
 
@@ -51,22 +55,32 @@ def send_reset_link(email: str, settings: Settings) -> None:
             return
         token = create_reset_token(db, user, settings)
     link = f"{settings.public_base_url}/reset-password?token={token}"
-    send_email(settings, user.email, "Reset your EntityNetworks password",
-               "Someone (hopefully you) asked to reset the password for this "
-               "EntityNetworks account.\n\n"
-               f"Open this link to choose a new password:\n{link}\n\n"
-               f"The link works once and expires in {settings.password_reset_ttl_minutes} "
-               "minutes. If you didn't ask for this, ignore this email; your password "
-               "stays the same.\n")
+    send_email(
+        settings,
+        user.email,
+        "Reset your EntityNetworks password",
+        "Someone (hopefully you) asked to reset the password for this "
+        "EntityNetworks account.\n\n"
+        f"Open this link to choose a new password:\n{link}\n\n"
+        f"The link works once and expires in {settings.password_reset_ttl_minutes} "
+        "minutes. If you didn't ask for this, ignore this email; your password "
+        "stays the same.\n",
+    )
 
 
 def consume_reset_token(db: Session, token: str) -> User | None:
     """Return the token's user and mark it used, or None if invalid/expired/used."""
-    row = db.scalar(select(PasswordResetToken)
-                    .where(PasswordResetToken.token_hash == hash_token(token))
-                    .with_for_update(of=PasswordResetToken))
-    if row is None or row.used_at is not None or row.expires_at <= utcnow() \
-            or not row.user.is_active:
+    row = db.scalar(
+        select(PasswordResetToken)
+        .where(PasswordResetToken.token_hash == hash_token(token))
+        .with_for_update(of=PasswordResetToken)
+    )
+    if (
+        row is None
+        or row.used_at is not None
+        or row.expires_at <= utcnow()
+        or not row.user.is_active
+    ):
         return None
     row.used_at = utcnow()
     return row.user

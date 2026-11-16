@@ -32,8 +32,10 @@ def test_normalize_country():
 
 
 def test_parse_address_block():
-    s = ("[Smith, John; Doe, Ann] Univ Parma, Dept Med & Surg, I-43126 Parma, Italy; "
-         "[Lee, Kim] Mayo Clin, Rochester, MN 55905 USA")
+    s = (
+        "[Smith, John; Doe, Ann] Univ Parma, Dept Med & Surg, I-43126 Parma, Italy; "
+        "[Lee, Kim] Mayo Clin, Rochester, MN 55905 USA"
+    )
     recs = parse_address_block(s)
     assert [r["author_name"] for r in recs] == ["Smith, John", "Doe, Ann", "Lee, Kim"]
     assert recs[0]["institution"] == "Univ Parma"
@@ -46,8 +48,10 @@ def test_parse_address_block():
 
 
 def test_reprint_and_anchor_prefers_university():
-    s = ("Smith, J (corresponding author), Mayo Clin, Rochester, MN USA.; "
-         "Smith, J (corresponding author), Univ Minnesota, Dept Surg, Minneapolis, MN USA.")
+    s = (
+        "Smith, J (corresponding author), Mayo Clin, Rochester, MN USA.; "
+        "Smith, J (corresponding author), Univ Minnesota, Dept Surg, Minneapolis, MN USA."
+    )
     recs = parse_reprint_address_block(s)
     assert [r["institution"] for r in recs] == ["Mayo Clin", "Univ Minnesota"]
     assert pick_anchor_institution(recs)["institution"] == "Univ Minnesota"
@@ -62,8 +66,9 @@ def test_keywords():
 
 
 def test_author_ids():
-    df = pd.DataFrame({"autors": ["Doe, Ann", "Roe, Bob"],
-                       "ORCIDs": ["Doe, Ann/0000-0001-2345-6789", None]})
+    df = pd.DataFrame(
+        {"autors": ["Doe, Ann", "Roe, Bob"], "ORCIDs": ["Doe, Ann/0000-0001-2345-6789", None]}
+    )
     assert build_orcid_lookup(df) == {"doe, ann": "0000-0001-2345-6789"}
     out = resolve_author_ids(df)
     assert out["author_id"].tolist() == ["0000-0001-2345-6789", synthetic_author_code("Roe, Bob")]
@@ -77,8 +82,14 @@ def test_filter_out_mega_papers():
 
 def test_teams_other_vs_unknown():
     G = nx.Graph()
-    G.add_nodes_from([("a", {"country": "Italy"}), ("b", {"country": "Italy"}),
-                      ("c", {"country": "Peru"}), ("d", {})])
+    G.add_nodes_from(
+        [
+            ("a", {"country": "Italy"}),
+            ("b", {"country": "Italy"}),
+            ("c", {"country": "Peru"}),
+            ("d", {}),
+        ]
+    )
     teams = {n["id"]: n["team"] for n in graph_to_network(G, team_attribute="country")["nodes"]}
     assert teams == {"a": "Italy", "b": "Italy", "c": "other", "d": "unknown"}
 
@@ -108,7 +119,13 @@ def test_connected_sample_independent_of_hash_seed():
     outputs = set()
     for seed in ("1", "2", "12345"):
         env = {**os.environ, "PYTHONHASHSEED": seed}
-        res = subprocess.run([sys.executable, "-c", _SAMPLE_SCRIPT], cwd=BACKEND_DIR, env=env,
-                             capture_output=True, text=True, check=True)
+        res = subprocess.run(
+            [sys.executable, "-c", _SAMPLE_SCRIPT],
+            cwd=BACKEND_DIR,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
         outputs.add(res.stdout)
     assert len(outputs) == 1

@@ -31,8 +31,10 @@ NonEmptyStr = Annotated[str, Field(min_length=1)]
 AttrValue = str | int | float | list[str]
 Attr = Annotated[
     dict[str, AttrValue],
-    Field(description="Display/search-only attributes. Never drives color or the "
-                      "Group/Relationship filters. Empty values are omitted."),
+    Field(
+        description="Display/search-only attributes. Never drives color or the "
+        "Group/Relationship filters. Empty values are omitted."
+    ),
 ]
 
 
@@ -41,12 +43,15 @@ class _Strict(BaseModel):
 
 
 class NetworkNode(_Strict):
-    id: NonEmptyStr = Field(description="ORCID, LOCAL-<hash>, or an institution/country name. "
-                                        "Never a raw author name.")
+    id: NonEmptyStr = Field(
+        description="ORCID, LOCAL-<hash>, or an institution/country name. Never a raw author name."
+    )
     name: str = Field(description="Human-readable display name.")
-    team: NonEmptyStr = Field(description="Drives node color and the Group filter. "
-                                          f"'{TEAM_OTHER}' = real value outside the top-N; "
-                                          f"'{TEAM_UNKNOWN}' = no value.")
+    team: NonEmptyStr = Field(
+        description="Drives node color and the Group filter. "
+        f"'{TEAM_OTHER}' = real value outside the top-N; "
+        f"'{TEAM_UNKNOWN}' = no value."
+    )
     role: str = Field(description="Short description, e.g. '14 co-authors'.")
     attr: Attr | None = None
 
@@ -54,8 +59,10 @@ class NetworkNode(_Strict):
 class NetworkEdge(_Strict):
     source: NonEmptyStr
     target: NonEmptyStr
-    type: NonEmptyStr = Field(description="Relationship, e.g. collaborates_with, "
-                                          "shares_keywords_with. Drives the Relationship filter.")
+    type: NonEmptyStr = Field(
+        description="Relationship, e.g. collaborates_with, "
+        "shares_keywords_with. Drives the Relationship filter."
+    )
     weight: int = Field(ge=1, description="Strength, e.g. number of shared articles.")
     attr: Attr | None = None
 
@@ -76,8 +83,9 @@ class Network(_Strict):
         for e in self.edges:
             for end in (e.source, e.target):
                 if end not in ids:
-                    raise ValueError(f"edge {e.source!r} -> {e.target!r} references unknown "
-                                     f"node {end!r}")
+                    raise ValueError(
+                        f"edge {e.source!r} -> {e.target!r} references unknown node {end!r}"
+                    )
             if e.source == e.target:
                 raise ValueError(f"self-loop on node {e.source!r}")
             low, high = sorted((e.source, e.target))

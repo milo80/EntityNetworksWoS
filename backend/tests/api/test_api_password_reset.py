@@ -17,9 +17,12 @@ NEW_PASSWORD = "a brand new passphrase"
 def outbox(monkeypatch):
     """Captures emails instead of sending them."""
     sent: list[dict] = []
-    monkeypatch.setattr("app.auth.password_reset.send_email",
-                        lambda settings, to, subject, body: sent.append(
-                            {"to": to, "subject": subject, "body": body}))
+    monkeypatch.setattr(
+        "app.auth.password_reset.send_email",
+        lambda settings, to, subject, body: sent.append(
+            {"to": to, "subject": subject, "body": body}
+        ),
+    )
     return sent
 
 
@@ -34,8 +37,9 @@ def token_from(mail: dict) -> str:
 
 
 def confirm(client, token, password=NEW_PASSWORD):
-    return client.post("/api/auth/password-reset/confirm",
-                       json={"token": token, "password": password})
+    return client.post(
+        "/api/auth/password-reset/confirm", json={"token": token, "password": password}
+    )
 
 
 def login(client, password):
@@ -136,6 +140,7 @@ def test_without_smtp_the_link_is_logged(make_client, caplog, settings, monkeypa
 
 def test_manage_set_password(make_client, db, monkeypatch, capsys):
     from app import manage
+
     victim = make_client()
     register(victim)
     monkeypatch.setattr(manage.getpass, "getpass", lambda prompt: NEW_PASSWORD)

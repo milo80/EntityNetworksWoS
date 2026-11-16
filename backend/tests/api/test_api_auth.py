@@ -29,10 +29,13 @@ def test_register_sets_secure_session_cookies(make_client):
 def test_register_rejects_duplicate_and_weak(make_client):
     c = make_client()
     register(c)
-    r = make_client().post("/api/auth/register",
-                           json={"email": "ANN@example.org", "password": PASSWORD})
+    r = make_client().post(
+        "/api/auth/register", json={"email": "ANN@example.org", "password": PASSWORD}
+    )
     assert r.status_code == 409
-    r = make_client().post("/api/auth/register", json={"email": "b@example.org", "password": "short"})
+    r = make_client().post(
+        "/api/auth/register", json={"email": "b@example.org", "password": "short"}
+    )
     assert r.status_code == 422
     r = make_client().post("/api/auth/register", json={"email": "nope", "password": PASSWORD})
     assert r.status_code == 422
@@ -40,7 +43,9 @@ def test_register_rejects_duplicate_and_weak(make_client):
 
 def test_registration_can_be_disabled(make_client, settings, monkeypatch):
     monkeypatch.setattr(settings, "allow_registration", False)
-    r = make_client().post("/api/auth/register", json={"email": "a@example.org", "password": PASSWORD})
+    r = make_client().post(
+        "/api/auth/register", json={"email": "a@example.org", "password": PASSWORD}
+    )
     assert r.status_code == 403
 
 
@@ -88,6 +93,10 @@ def test_expired_session_rejected(client, db):
 def test_login_rate_limited(make_client, settings, monkeypatch):
     monkeypatch.setattr(settings, "login_rate_per_minute", 3)
     c = make_client()
-    codes = [c.post("/api/auth/login", json={"email": "x@example.org", "password": "whatever1"}
-                    ).status_code for _ in range(5)]
+    codes = [
+        c.post(
+            "/api/auth/login", json={"email": "x@example.org", "password": "whatever1"}
+        ).status_code
+        for _ in range(5)
+    ]
     assert codes == [401, 401, 401, 429, 429]

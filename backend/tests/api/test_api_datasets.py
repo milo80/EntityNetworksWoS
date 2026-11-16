@@ -56,8 +56,10 @@ def test_datasets_are_private(make_client):
     assert bob.get("/api/datasets").json() == []
     assert bob.get(f"/api/datasets/{ds['id']}").status_code == 404
     assert bob.delete(f"/api/datasets/{ds['id']}").status_code == 404
-    assert bob.post("/api/runs", json={"dataset_id": ds["id"], "relation": "author"}
-                    ).status_code == 404
+    assert (
+        bob.post("/api/runs", json={"dataset_id": ds["id"], "relation": "author"}).status_code
+        == 404
+    )
     assert ann.get(f"/api/datasets/{ds['id']}").status_code == 200
 
 

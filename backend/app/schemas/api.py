@@ -45,8 +45,10 @@ class UserOut(BaseModel):
 
 class SessionOut(BaseModel):
     user: UserOut
-    csrf_token: str = Field(description="Send back in the X-CSRF-Token header on "
-                                        "POST/PUT/PATCH/DELETE (also set as a readable cookie).")
+    csrf_token: str = Field(
+        description="Send back in the X-CSRF-Token header on "
+        "POST/PUT/PATCH/DELETE (also set as a readable cookie)."
+    )
 
 
 # ---------------------------------------------------------------- datasets
@@ -75,6 +77,7 @@ class DatasetOut(BaseModel):
 
 class DatasetProfileOut(BaseModel):
     """Schema, sample rows and statistics (see pipeline/profile.py); null until ready."""
+
     status: ProfileStatus
     error: str | None
     profile: dict | None
@@ -99,10 +102,12 @@ class AuthorParams(_Params):
 
 
 class InstitutionKeywordParams(_Params):
-    group_column: Literal["institution_department", "institution", "country"] = \
+    group_column: Literal["institution_department", "institution", "country"] = (
         "institution_department"
-    max_keyword_df: float = Field(0.12, gt=0, le=1,
-                                  description="Ignore keywords in more than this share of articles")
+    )
+    max_keyword_df: float = Field(
+        0.12, gt=0, le=1, description="Ignore keywords in more than this share of articles"
+    )
     min_shared_keywords: int = Field(3, ge=1, le=50)
     top_n: int = Field(150, ge=10, le=2000)
     team_attribute: Literal["country", "institution"] | None = "country"
@@ -123,8 +128,9 @@ class InstitutionKeywordRunCreate(BaseModel):
     params: InstitutionKeywordParams = InstitutionKeywordParams()
 
 
-RunCreate = Annotated[AuthorRunCreate | InstitutionKeywordRunCreate,
-                      Field(discriminator="relation")]
+RunCreate = Annotated[
+    AuthorRunCreate | InstitutionKeywordRunCreate, Field(discriminator="relation")
+]
 
 PARAMS_BY_RELATION: dict[str, type[_Params]] = {
     "author": AuthorParams,

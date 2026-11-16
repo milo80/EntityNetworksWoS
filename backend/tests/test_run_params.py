@@ -40,8 +40,11 @@ def test_synthetic_data_builds_valid_networks():
     assert all(e["source"] != e["target"] for e in author["edges"])  # duplicated author ignored
 
     inst = institution_keyword_network(
-        articles, dataclasses.replace(RELATIONS["institution_keywords"][1](),
-                                      max_keyword_df=0.5, min_shared_keywords=2))
+        articles,
+        dataclasses.replace(
+            RELATIONS["institution_keywords"][1](), max_keyword_df=0.5, min_shared_keywords=2
+        ),
+    )
     assert inst["edges"], "synthetic data should produce keyword links"
 
 
@@ -50,4 +53,7 @@ def test_build_network_applies_api_params(monkeypatch):
     net = build_network("author", {"max_authors": 2, "top_n": 10}, [])
     # Only 2-author articles survive max_authors=2.
     assert {e["attr"]["article_titles"][0] for e in net["edges"]} == {
-        "Synthetic article WOS:2", "Synthetic article WOS:3", "Synthetic article WOS:5"}
+        "Synthetic article WOS:2",
+        "Synthetic article WOS:3",
+        "Synthetic article WOS:5",
+    }

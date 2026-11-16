@@ -12,8 +12,9 @@ log = logging.getLogger(__name__)
 AUTHOR_NAMES_COLUMN = "Author Full Names"
 
 
-def prepare_author_lists(df: pd.DataFrame, column_name: str = AUTHOR_NAMES_COLUMN,
-                         report: bool = False) -> pd.DataFrame:
+def prepare_author_lists(
+    df: pd.DataFrame, column_name: str = AUTHOR_NAMES_COLUMN, report: bool = False
+) -> pd.DataFrame:
     """Ensure the article-level 'autors_list' column exists.
 
     Splits "Smith, J; Doe, A" -> ["Smith, J", "Doe, A"]. Idempotent: an existing
@@ -23,8 +24,10 @@ def prepare_author_lists(df: pd.DataFrame, column_name: str = AUTHOR_NAMES_COLUM
     """
     df = df.copy()
     if "autors_list" not in df.columns:
-        df["autors_list"] = df[column_name].str.split(";").apply(
-            lambda x: [name.strip() for name in x] if isinstance(x, list) else []
+        df["autors_list"] = (
+            df[column_name]
+            .str.split(";")
+            .apply(lambda x: [name.strip() for name in x] if isinstance(x, list) else [])
         )
 
     if report:
@@ -32,8 +35,11 @@ def prepare_author_lists(df: pd.DataFrame, column_name: str = AUTHOR_NAMES_COLUM
         log.info("Total articles: %d", len(df))
         log.info("Authors-per-article distribution:\n%s", counts.describe())
         log.info("95th / 99th percentile: %s / %s", counts.quantile(0.95), counts.quantile(0.99))
-        log.info("Articles with 15+ authors: %d; 20+ authors: %d",
-                 (counts >= 15).sum(), (counts >= 20).sum())
+        log.info(
+            "Articles with 15+ authors: %d; 20+ authors: %d",
+            (counts >= 15).sum(),
+            (counts >= 20).sum(),
+        )
     return df
 
 
@@ -47,8 +53,12 @@ def filter_out_mega_papers(df: pd.DataFrame, max_authors: int = 15) -> pd.DataFr
     df = prepare_author_lists(df)
     before = len(df)
     filtered = df[df["autors_list"].apply(len) <= max_authors].copy()
-    log.info("Filtered out mega-papers (> %d authors): %d -> %d articles",
-             max_authors, before, len(filtered))
+    log.info(
+        "Filtered out mega-papers (> %d authors): %d -> %d articles",
+        max_authors,
+        before,
+        len(filtered),
+    )
     return filtered
 
 
@@ -63,8 +73,9 @@ def extract_authors_with_metadata(df: pd.DataFrame) -> pd.DataFrame:
     df["total_authors"] = df["autors_list"].apply(len)
 
     df_exploded = df.explode(["autors_list", "author_level_list"])
-    df_exploded = df_exploded.rename(columns={"autors_list": "autors",
-                                              "author_level_list": "author_level"})
+    df_exploded = df_exploded.rename(
+        columns={"autors_list": "autors", "author_level_list": "author_level"}
+    )
     df_exploded = df_exploded[df_exploded["autors"].notna()]
     df_exploded = df_exploded[df_exploded["autors"] != ""]
     return df_exploded
@@ -116,8 +127,13 @@ def resolve_author_ids(df_exploded: pd.DataFrame, orcid_column: str = "ORCIDs") 
 
     resolved = df_exploded["author_id"].isin(name_to_orcid.values()).sum()
     total = len(df_exploded)
-    log.info("ORCID resolution: %d/%d author-article rows resolved (%.0f%%); "
-             "%d unique identities vs %d unique raw names",
-             resolved, total, 100 * resolved / total if total else 0,
-             df_exploded["author_id"].nunique(), df_exploded["autors"].nunique())
+    log.info(
+        "ORCID resolution: %d/%d author-article rows resolved (%.0f%%); "
+        "%d unique identities vs %d unique raw names",
+        resolved,
+        total,
+        100 * resolved / total if total else 0,
+        df_exploded["author_id"].nunique(),
+        df_exploded["autors"].nunique(),
+    )
     return df_exploded

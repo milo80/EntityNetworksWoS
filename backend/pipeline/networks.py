@@ -18,12 +18,19 @@ log = logging.getLogger(__name__)
 ORCID_PATTERN = re.compile(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$")
 
 
-def create_author_network(df_exploded: pd.DataFrame, id_column: str = "author_id",
-                          name_column: str = "display_name",
-                          extra_attributes: tuple[str, ...] = ("institution", "institution_department",
-                                                               "department", "city", "country"),
-                          list_attributes: tuple[str, ...] = ("author_keywords", "keywords_plus"),
-                          ) -> nx.Graph:
+def create_author_network(
+    df_exploded: pd.DataFrame,
+    id_column: str = "author_id",
+    name_column: str = "display_name",
+    extra_attributes: tuple[str, ...] = (
+        "institution",
+        "institution_department",
+        "department",
+        "city",
+        "country",
+    ),
+    list_attributes: tuple[str, ...] = ("author_keywords", "keywords_plus"),
+) -> nx.Graph:
     """Co-authorship graph from exploded author rows.
 
     Nodes are keyed by ``id_column`` and carry 'display_name', 'has_orcid', the
@@ -63,8 +70,10 @@ def create_author_network(df_exploded: pd.DataFrame, id_column: str = "author_id
                         bucket[key] = v.strip()
 
     for author_id, counts in name_counts.items():
-        node_attrs = {"display_name": counts.most_common(1)[0][0],
-                      "has_orcid": bool(ORCID_PATTERN.match(str(author_id)))}
+        node_attrs = {
+            "display_name": counts.most_common(1)[0][0],
+            "has_orcid": bool(ORCID_PATTERN.match(str(author_id))),
+        }
         for c in available_extra:
             author_counts = extra_counts[c].get(author_id)
             node_attrs[c] = author_counts.most_common(1)[0][0] if author_counts else None
@@ -87,8 +96,12 @@ def create_author_network(df_exploded: pd.DataFrame, id_column: str = "author_id
                     # same ORCID. Not a collaboration - and a self-loop would add 2
                     # to the node's degree ("N co-authors").
                     continue
-                record = {"id": article_id, "title": article_title,
-                          "level_a": levels[i], "level_b": levels[j]}
+                record = {
+                    "id": article_id,
+                    "title": article_title,
+                    "level_a": levels[i],
+                    "level_b": levels[j],
+                }
                 if G.has_edge(a, b):
                     G[a][b]["weight"] += 1
                     G[a][b]["articles"].append(record)
@@ -101,11 +114,13 @@ def create_author_network(df_exploded: pd.DataFrame, id_column: str = "author_id
     return G
 
 
-def create_institution_keyword_network(df: pd.DataFrame, group_column: str = "institution_department",
-                                       node_attributes: tuple[str, ...] = ("institution", "department",
-                                                                           "city", "country"),
-                                       max_keyword_df: float = 0.2,
-                                       min_shared_keywords: int = 1) -> nx.Graph:
+def create_institution_keyword_network(
+    df: pd.DataFrame,
+    group_column: str = "institution_department",
+    node_attributes: tuple[str, ...] = ("institution", "department", "city", "country"),
+    max_keyword_df: float = 0.2,
+    min_shared_keywords: int = 1,
+) -> nx.Graph:
     """Institution "potential collaboration" graph based on shared keywords.
 
     Two institutions are linked when at least one pair of their articles shares
@@ -124,13 +139,21 @@ def create_institution_keyword_network(df: pd.DataFrame, group_column: str = "in
 
     total_articles = len(df)
     doc_freq = compute_keyword_document_frequency(df)
-    eligible_keywords = {kw for kw, freq in doc_freq.items()
-                         if total_articles == 0 or (freq / total_articles) <= max_keyword_df}
+    eligible_keywords = {
+        kw
+        for kw, freq in doc_freq.items()
+        if total_articles == 0 or (freq / total_articles) <= max_keyword_df
+    }
     excluded_keywords = sorted(set(doc_freq) - eligible_keywords)
-    log.info("Keyword matching pool: %d articles, %d unique normalized keywords; "
-             "%d eligible; excluded as too generic (>%.0f%%): %s",
-             total_articles, len(doc_freq), len(eligible_keywords), 100 * max_keyword_df,
-             excluded_keywords)
+    log.info(
+        "Keyword matching pool: %d articles, %d unique normalized keywords; "
+        "%d eligible; excluded as too generic (>%.0f%%): %s",
+        total_articles,
+        len(doc_freq),
+        len(eligible_keywords),
+        100 * max_keyword_df,
+        excluded_keywords,
+    )
 
     keyword_to_articles: dict[str, list] = {}
     for idx, row in df.iterrows():
@@ -170,17 +193,30 @@ def create_institution_keyword_network(df: pd.DataFrame, group_column: str = "in
         G.add_node(key, **node_attrs)
 
     for (inst_a, inst_b), article_pairs in matched_pairs.items():
-        qualifying = {ap: kws for ap, kws in article_pairs.items() if len(kws) >= min_shared_keywords}
+        qualifying = {
+            ap: kws for ap, kws in article_pairs.items() if len(kws) >= min_shared_keywords
+        }
         if not qualifying:
             continue
-        articles_detail = [{"article_a": ap[0], "article_b": ap[1], "shared_keywords": sorted(kws)}
-                           for ap, kws in qualifying.items()]
-        G.add_edge(inst_a, inst_b, weight=len(qualifying), articles=articles_detail,
-                   shared_keywords=sorted(set().union(*qualifying.values())))
+        articles_detail = [
+            {"article_a": ap[0], "article_b": ap[1], "shared_keywords": sorted(kws)}
+            for ap, kws in qualifying.items()
+        ]
+        G.add_edge(
+            inst_a,
+            inst_b,
+            weight=len(qualifying),
+            articles=articles_detail,
+            shared_keywords=sorted(set().union(*qualifying.values())),
+        )
 
     matched = {n for e in G.edges() for n in e}
-    log.info("Institution nodes: %d total, %d with at least one match; %d edges",
-             G.number_of_nodes(), len(matched), G.number_of_edges())
+    log.info(
+        "Institution nodes: %d total, %d with at least one match; %d edges",
+        G.number_of_nodes(),
+        len(matched),
+        G.number_of_edges(),
+    )
     return G
 
 

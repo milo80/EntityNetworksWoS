@@ -1,7 +1,7 @@
 """Convert a graph to the frontend's network JSON contract (see docs/design-notes.md).
 
-    {"nodes": [{"id", "name", "team", "role", "attr"?}],
-     "edges": [{"source", "target", "type", "weight", "attr"?}]}
+{"nodes": [{"id", "name", "team", "role", "attr"?}],
+ "edges": [{"source", "target", "type", "weight", "attr"?}]}
 """
 
 from __future__ import annotations
@@ -17,11 +17,15 @@ from .sampling import build_connected_sample
 log = logging.getLogger(__name__)
 
 
-def _teams_from_attribute(G_sub: nx.Graph, team_attribute: str, max_team_categories: int,
-                          min_team_size: int) -> dict:
+def _teams_from_attribute(
+    G_sub: nx.Graph, team_attribute: str, max_team_categories: int, min_team_size: int
+) -> dict:
     """team = the node's attribute value; rare values -> "other", missing -> "unknown"."""
-    value_counts = Counter(G_sub.nodes[n].get(team_attribute) for n in G_sub.nodes()
-                           if G_sub.nodes[n].get(team_attribute))
+    value_counts = Counter(
+        G_sub.nodes[n].get(team_attribute)
+        for n in G_sub.nodes()
+        if G_sub.nodes[n].get(team_attribute)
+    )
     kept = {v for v, c in value_counts.most_common(max_team_categories) if c >= min_team_size}
 
     def team_for(n):
@@ -45,12 +49,19 @@ def _teams_from_communities(G: nx.Graph, max_communities: int, min_community_siz
     return node_to_team
 
 
-def graph_to_network(G: nx.Graph, top_n: int | None = None, edge_type: str = "related_to",
-                     role_suffix: str = "connections", min_community_size: int = 2,
-                     max_communities: int = 10, team_attribute: str | None = None,
-                     max_team_categories: int = 10, min_team_size: int = 2,
-                     node_attrs: tuple[str, ...] | None = None,
-                     edge_attrs: tuple[str, ...] | None = None) -> dict:
+def graph_to_network(
+    G: nx.Graph,
+    top_n: int | None = None,
+    edge_type: str = "related_to",
+    role_suffix: str = "connections",
+    min_community_size: int = 2,
+    max_communities: int = 10,
+    team_attribute: str | None = None,
+    max_team_categories: int = 10,
+    min_team_size: int = 2,
+    node_attrs: tuple[str, ...] | None = None,
+    edge_attrs: tuple[str, ...] | None = None,
+) -> dict:
     """Build the network JSON dict for ``G``.
 
     - top_n: if G is larger, export a connected sample (build_connected_sample).
@@ -60,20 +71,28 @@ def graph_to_network(G: nx.Graph, top_n: int | None = None, edge_type: str = "re
       (display/search only). Empty values are omitted; "attr" is omitted if empty.
       Edge attributes must already be flat (e.g. 'shared_keywords').
     """
-    G_sub = build_connected_sample(G, target_size=top_n) if top_n is not None and \
-        G.number_of_nodes() > top_n else G
+    G_sub = (
+        build_connected_sample(G, target_size=top_n)
+        if top_n is not None and G.number_of_nodes() > top_n
+        else G
+    )
 
     if team_attribute:
-        node_to_team = _teams_from_attribute(G_sub, team_attribute, max_team_categories, min_team_size)
+        node_to_team = _teams_from_attribute(
+            G_sub, team_attribute, max_team_categories, min_team_size
+        )
     else:
         node_to_team = _teams_from_communities(G, max_communities, min_community_size)
 
     nodes = []
     for n in G_sub.nodes():
         data = G_sub.nodes[n]
-        node_obj = {"id": n, "name": data.get("display_name", n),
-                    "team": node_to_team.get(n, "other"),
-                    "role": f"{G_sub.degree(n)} {role_suffix}"}
+        node_obj = {
+            "id": n,
+            "name": data.get("display_name", n),
+            "team": node_to_team.get(n, "other"),
+            "role": f"{G_sub.degree(n)} {role_suffix}",
+        }
         if node_attrs:
             attrs = {f: data.get(f) for f in node_attrs if data.get(f)}
             if attrs:
@@ -89,6 +108,10 @@ def graph_to_network(G: nx.Graph, top_n: int | None = None, edge_type: str = "re
                 edge_obj["attr"] = attrs
         edges.append(edge_obj)
 
-    log.info("Exported %d nodes and %d edges; teams: %s",
-             len(nodes), len(edges), dict(Counter(n["team"] for n in nodes)))
+    log.info(
+        "Exported %d nodes and %d edges; teams: %s",
+        len(nodes),
+        len(edges),
+        dict(Counter(n["team"] for n in nodes)),
+    )
     return {"nodes": nodes, "edges": edges}

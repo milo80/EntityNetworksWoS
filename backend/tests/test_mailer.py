@@ -34,9 +34,13 @@ class FakeSMTP:
 
 
 def smtp_settings(**overrides) -> Settings:
-    values = {"smtp_host": "smtp.example.org", "smtp_port": 587,
-              "smtp_username": "bot@example.org", "smtp_password": SecretStr("app-password"),
-              "smtp_from": "App <bot@example.org>"}
+    values = {
+        "smtp_host": "smtp.example.org",
+        "smtp_port": 587,
+        "smtp_username": "bot@example.org",
+        "smtp_password": SecretStr("app-password"),
+        "smtp_from": "App <bot@example.org>",
+    }
     return Settings(**(values | overrides))
 
 
@@ -71,5 +75,6 @@ def test_without_host_logs_instead_of_sending(monkeypatch, caplog):
 
 def test_smtp_from_required_with_host():
     import pytest
+
     with pytest.raises(ValueError, match="SMTP_FROM"):
         Settings(smtp_host="smtp.example.org", smtp_from=None)

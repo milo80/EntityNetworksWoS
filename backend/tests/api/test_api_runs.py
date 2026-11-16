@@ -28,14 +28,17 @@ def _create_run(client, dataset_id, relation="author", params=None):
     return client.post("/api/runs", json=body)
 
 
-@pytest.mark.parametrize("body", [
-    {"relation": "author", "params": {"top_n": 5}},
-    {"relation": "author", "params": {"colour": "red"}},
-    {"relation": "author", "params": {"team_attribute": "planet"}},
-    {"relation": "institution_keywords", "params": {"max_keyword_df": 0}},
-    {"relation": "author", "params": {"max_keyword_df": 0.5}},  # wrong relation's param
-    {"relation": "coauthor_magic"},
-])
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"relation": "author", "params": {"top_n": 5}},
+        {"relation": "author", "params": {"colour": "red"}},
+        {"relation": "author", "params": {"team_attribute": "planet"}},
+        {"relation": "institution_keywords", "params": {"max_keyword_df": 0}},
+        {"relation": "author", "params": {"max_keyword_df": 0.5}},  # wrong relation's param
+        {"relation": "coauthor_magic"},
+    ],
+)
 def test_invalid_run_requests(client, dataset, body):
     assert client.post("/api/runs", json={"dataset_id": dataset["id"], **body}).status_code == 422
 
@@ -65,19 +68,26 @@ def test_worker_builds_network(client, dataset, settings, db, synthetic_pipeline
     assert len(network.edges) == status["edge_count"] > 0
 
     etag = r.headers["etag"]
-    assert client.get(f"/api/runs/{run['id']}/network",
-                      headers={"If-None-Match": etag}).status_code == 304
+    assert (
+        client.get(f"/api/runs/{run['id']}/network", headers={"If-None-Match": etag}).status_code
+        == 304
+    )
 
     export = client.get(f"/api/runs/{run['id']}/export")
-    assert export.headers["content-disposition"] == \
-        f'attachment; filename="network_author_{run["id"]}.json"'
+    assert (
+        export.headers["content-disposition"]
+        == f'attachment; filename="network_author_{run["id"]}.json"'
+    )
     assert export.json() == r.json()
 
 
-def test_worker_institution_network_with_params(client, dataset, settings, db,
-                                                synthetic_pipeline):
-    run = _create_run(client, dataset["id"], "institution_keywords",
-                      {"max_keyword_df": 0.5, "min_shared_keywords": 2}).json()
+def test_worker_institution_network_with_params(client, dataset, settings, db, synthetic_pipeline):
+    run = _create_run(
+        client,
+        dataset["id"],
+        "institution_keywords",
+        {"max_keyword_df": 0.5, "min_shared_keywords": 2},
+    ).json()
     run_once(db, settings)
     assert client.get(f"/api/runs/{run['id']}").json()["edge_count"] > 0
 
@@ -93,12 +103,16 @@ def test_unreadable_upload_fails_with_message(client, dataset, settings, db):
 
 def test_runs_are_private(make_client, client, dataset):
     from .conftest import register
+
     run = _create_run(client, dataset["id"]).json()
     bob = make_client()
     register(bob, "bob@example.org")
     assert bob.get("/api/runs").json() == []
-    for path in (f"/api/runs/{run['id']}", f"/api/runs/{run['id']}/network",
-                 f"/api/runs/{run['id']}/export"):
+    for path in (
+        f"/api/runs/{run['id']}",
+        f"/api/runs/{run['id']}/network",
+        f"/api/runs/{run['id']}/export",
+    ):
         assert bob.get(path).status_code == 404
     assert bob.delete(f"/api/runs/{run['id']}").status_code == 404
 
@@ -109,8 +123,9 @@ def test_claim_skips_runs_locked_by_another_worker(client, dataset, db):
     other = get_sessionmaker()()
     try:
         # Another transaction holds the oldest queued row...
-        other.scalars(select(NetworkRun).where(NetworkRun.id == first["id"])
-                      .with_for_update()).one()
+        other.scalars(
+            select(NetworkRun).where(NetworkRun.id == first["id"]).with_for_update()
+        ).one()
         # ...so this worker skips it instead of blocking.
         claimed = claim_next_run(db)
         assert claimed.id == second["id"]

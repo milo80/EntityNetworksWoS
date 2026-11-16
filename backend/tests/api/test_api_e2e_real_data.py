@@ -12,10 +12,13 @@ from app.worker import run_once
 from ..conftest import GOLDEN_DIR, WOS_DIR
 
 
-@pytest.mark.parametrize("relation, golden", [
-    ("author", "network_author.json"),
-    ("institution_keywords", "network_institution_keywords.json"),
-])
+@pytest.mark.parametrize(
+    "relation, golden",
+    [
+        ("author", "network_author.json"),
+        ("institution_keywords", "network_institution_keywords.json"),
+    ],
+)
 def test_real_upload_reproduces_golden(client, db, settings, relation, golden):
     # Upload in reverse name order: the result must not depend on upload order.
     paths = sorted(WOS_DIR.glob("*.xls"), reverse=True)

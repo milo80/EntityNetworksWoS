@@ -48,8 +48,10 @@ def rate_limit(scope: str, limit_of: Callable[[], int]):
     def dependency(request: Request) -> None:
         client = request.client.host if request.client else "unknown"
         if not limiter.hit(scope, client, limit_of()):
-            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
-                                "Too many requests, try again in a minute",
-                                headers={"Retry-After": str(int(limiter.window))})
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                "Too many requests, try again in a minute",
+                headers={"Retry-After": str(int(limiter.window))},
+            )
 
     return dependency

@@ -46,26 +46,36 @@ def compare(a: dict, b: dict, max_items: int) -> list[str]:
             fields = sorted(f for f in na[k].keys() | nb[k].keys() if na[k].get(f) != nb[k].get(f))
             detail = ", ".join(
                 f"{f}: {na[k].get(f)!r} -> {nb[k].get(f)!r}" if f != "attr" else "attr changed"
-                for f in fields)
+                for f in fields
+            )
             changed.append(f"{k} ({na[k].get('name')}): {detail}")
     show("changed nodes", changed)
 
     lines.append(f"edges: {len(ea)} -> {len(eb)}")
     show("removed edges", set(ea) - set(eb))
     show("added edges", set(eb) - set(ea))
-    show("changed edges", [k for k in set(ea) & set(eb)
-                           if {**ea[k], "source": 0, "target": 0} != {**eb[k], "source": 0, "target": 0}])
+    show(
+        "changed edges",
+        [
+            k
+            for k in set(ea) & set(eb)
+            if {**ea[k], "source": 0, "target": 0} != {**eb[k], "source": 0, "target": 0}
+        ],
+    )
 
     ta, tb = Counter(n["team"] for n in a["nodes"]), Counter(n["team"] for n in b["nodes"])
     if ta != tb:
-        show("team count changes", [f"{t}: {ta[t]} -> {tb[t]}" for t in ta.keys() | tb.keys()
-                                    if ta[t] != tb[t]])
+        show(
+            "team count changes",
+            [f"{t}: {ta[t]} -> {tb[t]}" for t in ta.keys() | tb.keys() if ta[t] != tb[t]],
+        )
     return lines
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("old", type=Path)
     parser.add_argument("new", type=Path)
     parser.add_argument("--max-items", type=int, default=10, help="items listed per category")

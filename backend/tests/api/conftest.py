@@ -15,7 +15,8 @@ import pytest
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 TEST_DATABASE_URL = os.environ.get(
-    "TEST_DATABASE_URL", "postgresql+psycopg://entitynet:entitynet@localhost:5432/entitynet_test")
+    "TEST_DATABASE_URL", "postgresql+psycopg://entitynet:entitynet@localhost:5432/entitynet_test"
+)
 
 # Must be set before app settings are first read.
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
@@ -35,8 +36,9 @@ def _ensure_database(url: str) -> None:
     admin = create_engine(target.set(database="postgres"), isolation_level="AUTOCOMMIT")
     try:
         with admin.connect() as conn:
-            exists = conn.scalar(text("SELECT 1 FROM pg_database WHERE datname = :n"),
-                                 {"n": target.database})
+            exists = conn.scalar(
+                text("SELECT 1 FROM pg_database WHERE datname = :n"), {"n": target.database}
+            )
             if not exists:
                 conn.execute(text(f'CREATE DATABASE "{target.database}"'))
     finally:
@@ -48,8 +50,10 @@ def database(tmp_path_factory) -> Iterator[str]:
     try:
         _ensure_database(TEST_DATABASE_URL)
     except OperationalError as exc:
-        pytest.skip(f"PostgreSQL not reachable at {make_url(TEST_DATABASE_URL)!r}: "
-                    f"{exc.orig.__class__.__name__}")
+        pytest.skip(
+            f"PostgreSQL not reachable at {make_url(TEST_DATABASE_URL)!r}: "
+            f"{exc.orig.__class__.__name__}"
+        )
 
     from alembic.config import Config
 
@@ -70,6 +74,7 @@ def database(tmp_path_factory) -> Iterator[str]:
 @pytest.fixture
 def settings(database, tmp_path, monkeypatch):
     from app.config import get_settings
+
     get_settings.cache_clear()
     monkeypatch.setenv("UPLOAD_DIR", str(tmp_path / "uploads"))
     s = get_settings()
@@ -80,11 +85,15 @@ def settings(database, tmp_path, monkeypatch):
 @pytest.fixture
 def db(settings):
     from app.db import get_engine, get_sessionmaker
+
     engine = get_engine()
     with engine.begin() as conn:
-        tables = conn.scalars(text(
-            "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
-            "AND tablename <> 'alembic_version'")).all()
+        tables = conn.scalars(
+            text(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
+                "AND tablename <> 'alembic_version'"
+            )
+        ).all()
         conn.execute(text(f"TRUNCATE {', '.join(tables)} RESTART IDENTITY CASCADE"))
     with get_sessionmaker()() as session:
         yield session
@@ -94,6 +103,7 @@ def db(settings):
 def app(db, settings):
     from app.auth.ratelimit import limiter
     from app.main import create_app
+
     limiter.reset()
     return create_app()
 
@@ -101,6 +111,7 @@ def app(db, settings):
 @pytest.fixture
 def make_client(app):
     from fastapi.testclient import TestClient
+
     clients = []
 
     def factory() -> TestClient:

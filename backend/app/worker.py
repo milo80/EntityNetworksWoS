@@ -72,9 +72,13 @@ def recover_orphaned_runs(db: Session, max_attempts: int) -> int:
 
 
 def claim_next_run(db: Session) -> NetworkRun | None:
-    run = db.scalars(select(NetworkRun).where(NetworkRun.status == "queued")
-                     .order_by(NetworkRun.id).limit(1)
-                     .with_for_update(skip_locked=True)).first()
+    run = db.scalars(
+        select(NetworkRun)
+        .where(NetworkRun.status == "queued")
+        .order_by(NetworkRun.id)
+        .limit(1)
+        .with_for_update(skip_locked=True)
+    ).first()
     if run is None:
         db.rollback()
         return None
@@ -83,9 +87,10 @@ def claim_next_run(db: Session) -> NetworkRun | None:
     return run
 
 
-def _user_facing_error(exc: Exception,
-                       generic: str = "The network could not be built from these files "
-                                      "(see server logs)") -> str:
+def _user_facing_error(
+    exc: Exception,
+    generic: str = "The network could not be built from these files (see server logs)",
+) -> str:
     if isinstance(exc, WoSReadError):
         return str(exc)[:MAX_ERROR_LEN]
     if isinstance(exc, KeyError):  # a required WoS column is missing
@@ -111,9 +116,13 @@ def profile_next_dataset(db: Session, settings: Settings) -> bool:
     The row stays locked (FOR UPDATE SKIP LOCKED) while profiling - about a second
     for the 14 MB sample - so a crash leaves it 'pending' and it is retried.
     """
-    dataset = db.scalars(select(Dataset).where(Dataset.profile_status == "pending")
-                         .order_by(Dataset.id).limit(1)
-                         .with_for_update(skip_locked=True)).first()
+    dataset = db.scalars(
+        select(Dataset)
+        .where(Dataset.profile_status == "pending")
+        .order_by(Dataset.id)
+        .limit(1)
+        .with_for_update(skip_locked=True)
+    ).first()
     if dataset is None:
         db.rollback()
         return False
@@ -127,7 +136,8 @@ def profile_next_dataset(db: Session, settings: Settings) -> bool:
         log.exception("Profiling dataset %d failed", dataset.id)
         dataset.profile_status = "failed"
         dataset.profile_error = _user_facing_error(
-            exc, "These files could not be read as WoS exports (see server logs)")
+            exc, "These files could not be read as WoS exports (see server logs)"
+        )
     db.commit()
     log.info("Dataset %d profile: %s", dataset.id, dataset.profile_status)
     return True
@@ -146,11 +156,19 @@ def execute_run(db: Session, run: NetworkRun, settings: Settings) -> None:
         log.exception("Run %d failed", run.id)
         values = {"status": "failed", "error": _user_facing_error(exc)}
     else:
-        values = {"status": "succeeded", "error": None, "result": network,
-                  "node_count": len(network["nodes"]), "edge_count": len(network["edges"])}
+        values = {
+            "status": "succeeded",
+            "error": None,
+            "result": network,
+            "node_count": len(network["nodes"]),
+            "edge_count": len(network["edges"]),
+        }
     # UPDATE by id: if the run/dataset was deleted meanwhile this simply touches 0 rows.
-    db.execute(update(NetworkRun).where(NetworkRun.id == run.id, NetworkRun.status == "running")
-               .values(finished_at=utcnow(), **values))
+    db.execute(
+        update(NetworkRun)
+        .where(NetworkRun.id == run.id, NetworkRun.status == "running")
+        .values(finished_at=utcnow(), **values)
+    )
     db.commit()
     log.info("Run %d: %s", run.id, values["status"])
 

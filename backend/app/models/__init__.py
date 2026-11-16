@@ -76,27 +76,32 @@ class Dataset(Base):
     name: Mapped[str] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     # Schema/sample/statistics (pipeline.profile), computed by the worker after upload.
-    profile_status: Mapped[str] = mapped_column(String(20), default="pending",
-                                                server_default="pending", index=True)
+    profile_status: Mapped[str] = mapped_column(
+        String(20), default="pending", server_default="pending", index=True
+    )
     profile_error: Mapped[str | None] = mapped_column(Text)
     profile: Mapped[dict[str, Any] | None] = deferred(mapped_column(JSONB))
 
     __table_args__ = (
-        CheckConstraint("profile_status IN ('pending', 'ready', 'failed')",
-                        name="profile_status"),
+        CheckConstraint("profile_status IN ('pending', 'ready', 'failed')", name="profile_status"),
     )
 
     files: Mapped[list[DatasetFile]] = relationship(
-        back_populates="dataset", cascade="all, delete-orphan", passive_deletes=True,
-        order_by="DatasetFile.id", lazy="selectin")
+        back_populates="dataset",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="DatasetFile.id",
+        lazy="selectin",
+    )
 
 
 class DatasetFile(Base):
     __tablename__ = "dataset_files"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    dataset_id: Mapped[int] = mapped_column(ForeignKey("datasets.id", ondelete="CASCADE"),
-                                            index=True)
+    dataset_id: Mapped[int] = mapped_column(
+        ForeignKey("datasets.id", ondelete="CASCADE"), index=True
+    )
     original_name: Mapped[str] = mapped_column(String(255))
     stored_name: Mapped[str] = mapped_column(String(64))  # random name on disk, never user input
     size_bytes: Mapped[int] = mapped_column(BigInteger)
@@ -116,8 +121,9 @@ class NetworkRun(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    dataset_id: Mapped[int] = mapped_column(ForeignKey("datasets.id", ondelete="CASCADE"),
-                                            index=True)
+    dataset_id: Mapped[int] = mapped_column(
+        ForeignKey("datasets.id", ondelete="CASCADE"), index=True
+    )
     relation: Mapped[str] = mapped_column(String(50))
     params: Mapped[dict[str, Any]] = mapped_column(JSONB)
     status: Mapped[str] = mapped_column(String(20), default="queued", index=True)

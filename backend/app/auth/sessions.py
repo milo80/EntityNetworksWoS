@@ -33,19 +33,37 @@ def hash_token(token: str) -> str:
 
 def create_session(db: Session, user: User, response: Response, settings: Settings) -> UserSession:
     token = secrets.token_urlsafe(32)
-    session = UserSession(token_hash=hash_token(token), csrf_token=secrets.token_urlsafe(32),
-                          user_id=user.id,
-                          expires_at=utcnow() + timedelta(hours=settings.session_ttl_hours))
+    session = UserSession(
+        token_hash=hash_token(token),
+        csrf_token=secrets.token_urlsafe(32),
+        user_id=user.id,
+        expires_at=utcnow() + timedelta(hours=settings.session_ttl_hours),
+    )
     db.add(session)
     # Opportunistic cleanup of this user's expired sessions.
-    db.execute(delete(UserSession).where(UserSession.user_id == user.id,
-                                         UserSession.expires_at < utcnow()))
+    db.execute(
+        delete(UserSession).where(UserSession.user_id == user.id, UserSession.expires_at < utcnow())
+    )
     db.commit()
     max_age = settings.session_ttl_hours * 3600
-    response.set_cookie(settings.session_cookie, token, max_age=max_age, httponly=True,
-                        secure=settings.cookie_secure, samesite="lax", path="/")
-    response.set_cookie(settings.csrf_cookie, session.csrf_token, max_age=max_age, httponly=False,
-                        secure=settings.cookie_secure, samesite="lax", path="/")
+    response.set_cookie(
+        settings.session_cookie,
+        token,
+        max_age=max_age,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        path="/",
+    )
+    response.set_cookie(
+        settings.csrf_cookie,
+        session.csrf_token,
+        max_age=max_age,
+        httponly=False,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        path="/",
+    )
     return session
 
 
@@ -54,8 +72,11 @@ def clear_session_cookies(response: Response, settings: Settings) -> None:
         response.delete_cookie(name, path="/", secure=settings.cookie_secure, samesite="lax")
 
 
-def get_current_session(request: Request, db: Annotated[Session, Depends(get_db)],
-                        settings: Annotated[Settings, Depends(get_settings)]) -> UserSession:
+def get_current_session(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> UserSession:
     token = request.cookies.get(settings.session_cookie)
     if not token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")

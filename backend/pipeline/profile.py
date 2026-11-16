@@ -61,14 +61,16 @@ def _schema(df: pd.DataFrame) -> list[dict]:
     columns = []
     for name in df.columns:
         values = _non_empty(df[name])
-        columns.append({
-            "name": str(name),
-            "type": _column_type(df[name]),
-            "non_empty": len(values),
-            "non_empty_pct": _pct(len(values), len(df)),
-            "distinct": int(values.astype(str).nunique()),
-            "example": _json_value(values.iloc[0]) if len(values) else None,
-        })
+        columns.append(
+            {
+                "name": str(name),
+                "type": _column_type(df[name]),
+                "non_empty": len(values),
+                "non_empty_pct": _pct(len(values), len(df)),
+                "distinct": int(values.astype(str).nunique()),
+                "example": _json_value(values.iloc[0]) if len(values) else None,
+            }
+        )
     return columns
 
 
@@ -83,8 +85,12 @@ def _counts(counter: Counter, n: int = TOP_N) -> list[dict]:
 def _describe(values: pd.Series) -> dict | None:
     if values.empty:
         return None
-    return {"min": int(values.min()), "median": float(values.median()),
-            "mean": round(float(values.mean()), 2), "max": int(values.max())}
+    return {
+        "min": int(values.min()),
+        "median": float(values.median()),
+        "mean": round(float(values.mean()), 2),
+        "max": int(values.max()),
+    }
 
 
 def profile_dataset(df: pd.DataFrame) -> dict:
@@ -101,8 +107,9 @@ def profile_dataset(df: pd.DataFrame) -> dict:
         stats["publication_years"] = {
             "min": int(years.min()) if len(years) else None,
             "max": int(years.max()) if len(years) else None,
-            "per_year": [{"value": str(y), "count": int(c)}
-                         for y, c in sorted(Counter(years).items())],
+            "per_year": [
+                {"value": str(y), "count": int(c)} for y, c in sorted(Counter(years).items())
+            ],
         }
 
     if "Document Type" in df.columns:
@@ -141,8 +148,11 @@ def profile_dataset(df: pd.DataFrame) -> dict:
         stats["keywords"] = keywords
 
     if "Reprint Addresses" in df.columns:
-        anchors = df["Reprint Addresses"].apply(parse_reprint_address_block) \
+        anchors = (
+            df["Reprint Addresses"]
+            .apply(parse_reprint_address_block)
             .apply(pick_anchor_institution)
+        )
         countries = Counter(a["country"] for a in anchors if a and a.get("country"))
         institutions = Counter(a["institution"] for a in anchors if a and a.get("institution"))
         stats["corresponding_author"] = {

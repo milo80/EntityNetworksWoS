@@ -19,14 +19,28 @@ GOLDENS = sorted(GOLDEN_DIR.glob("*.json"))
 
 VALID = {
     "nodes": [
-        {"id": "0000-0001-2345-6789", "name": "Doe, Ann", "team": "Italy", "role": "1 co-authors",
-         "attr": {"institution": "Univ Parma", "author_keywords": ["ai", "ethics"]}},
-        {"id": "LOCAL-abc123def456", "name": "Roe, Bob", "team": TEAM_UNKNOWN,
-         "role": "1 co-authors"},
+        {
+            "id": "0000-0001-2345-6789",
+            "name": "Doe, Ann",
+            "team": "Italy",
+            "role": "1 co-authors",
+            "attr": {"institution": "Univ Parma", "author_keywords": ["ai", "ethics"]},
+        },
+        {
+            "id": "LOCAL-abc123def456",
+            "name": "Roe, Bob",
+            "team": TEAM_UNKNOWN,
+            "role": "1 co-authors",
+        },
     ],
     "edges": [
-        {"source": "0000-0001-2345-6789", "target": "LOCAL-abc123def456",
-         "type": "collaborates_with", "weight": 2, "attr": {"article_titles": ["T1", "T2"]}},
+        {
+            "source": "0000-0001-2345-6789",
+            "target": "LOCAL-abc123def456",
+            "type": "collaborates_with",
+            "weight": 2,
+            "attr": {"article_titles": ["T1", "T2"]},
+        },
     ],
 }
 
@@ -55,21 +69,32 @@ def _mutated(fn):
     return data
 
 
-@pytest.mark.parametrize("mutate, message", [
-    (lambda d: d["nodes"].append(dict(d["nodes"][0])), "duplicate node id"),
-    (lambda d: d["edges"][0].update(target="missing"), "unknown node"),
-    (lambda d: d["edges"][0].update(target=d["edges"][0]["source"]), "self-loop"),
-    (lambda d: d["edges"].append({**d["edges"][0], "source": d["edges"][0]["target"],
-                                  "target": d["edges"][0]["source"]}), "duplicate collaborates_with"),
-    (lambda d: d["edges"][0].update(weight=0), "greater than or equal to 1"),
-    (lambda d: d["edges"][0].update(weight="2"), "valid integer"),
-    (lambda d: d["nodes"][0].update(id=123), "valid string"),
-    (lambda d: d["nodes"][0].update(color="red"), "Extra inputs are not permitted"),
-    (lambda d: d["nodes"][0].pop("team"), "Field required"),
-    (lambda d: d["nodes"][0].update(team=""), "at least 1 character"),
-    (lambda d: d["nodes"][0]["attr"].update(city=None), "attr.city"),
-    (lambda d: d["nodes"][0]["attr"].update(author_keywords=["ok", 3]), "author_keywords"),
-])
+@pytest.mark.parametrize(
+    "mutate, message",
+    [
+        (lambda d: d["nodes"].append(dict(d["nodes"][0])), "duplicate node id"),
+        (lambda d: d["edges"][0].update(target="missing"), "unknown node"),
+        (lambda d: d["edges"][0].update(target=d["edges"][0]["source"]), "self-loop"),
+        (
+            lambda d: d["edges"].append(
+                {
+                    **d["edges"][0],
+                    "source": d["edges"][0]["target"],
+                    "target": d["edges"][0]["source"],
+                }
+            ),
+            "duplicate collaborates_with",
+        ),
+        (lambda d: d["edges"][0].update(weight=0), "greater than or equal to 1"),
+        (lambda d: d["edges"][0].update(weight="2"), "valid integer"),
+        (lambda d: d["nodes"][0].update(id=123), "valid string"),
+        (lambda d: d["nodes"][0].update(color="red"), "Extra inputs are not permitted"),
+        (lambda d: d["nodes"][0].pop("team"), "Field required"),
+        (lambda d: d["nodes"][0].update(team=""), "at least 1 character"),
+        (lambda d: d["nodes"][0]["attr"].update(city=None), "attr.city"),
+        (lambda d: d["nodes"][0]["attr"].update(author_keywords=["ok", 3]), "author_keywords"),
+    ],
+)
 def test_invalid_networks_rejected(mutate, message):
     with pytest.raises(ValidationError, match=message):
         validate_network(_mutated(mutate))
@@ -81,12 +106,15 @@ def test_other_and_unknown_are_distinct():
 
 def test_committed_json_schema_is_up_to_date():
     assert SCHEMA_PATH.exists(), "run: python -m pipeline.schema"
-    assert SCHEMA_PATH.read_text(encoding="utf-8") == render_json_schema(), \
+    assert SCHEMA_PATH.read_text(encoding="utf-8") == render_json_schema(), (
         "docs/network.schema.json is stale - run: python -m pipeline.schema"
+    )
 
 
 def test_committed_openapi_is_up_to_date():
     from app.openapi_export import OPENAPI_PATH, render_openapi
+
     assert OPENAPI_PATH.exists(), "run: python -m app.openapi_export"
-    assert OPENAPI_PATH.read_text(encoding="utf-8") == render_openapi(), \
+    assert OPENAPI_PATH.read_text(encoding="utf-8") == render_openapi(), (
         "docs/openapi.json is stale - run: python -m app.openapi_export (then npm run gen:api)"
+    )

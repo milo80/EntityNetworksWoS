@@ -1,6 +1,6 @@
 """Print the API's routes (method + path) from its OpenAPI schema.
 
-    python scripts/list_routes.py
+python scripts/list_routes.py
 """
 
 from __future__ import annotations

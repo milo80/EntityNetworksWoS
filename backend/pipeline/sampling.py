@@ -5,7 +5,9 @@ from __future__ import annotations
 import networkx as nx
 
 
-def build_connected_sample(G: nx.Graph, target_size: int = 40, min_component_size: int = 3) -> nx.Graph:
+def build_connected_sample(
+    G: nx.Graph, target_size: int = 40, min_component_size: int = 3
+) -> nx.Graph:
     """Sample up to ``target_size`` nodes from the largest connected components.
 
     Picking the global top-N by degree can produce a near-disconnected sample
@@ -17,8 +19,11 @@ def build_connected_sample(G: nx.Graph, target_size: int = 40, min_component_siz
     version iterated Python sets here, so the sample changed between runs.
     """
     order = {n: i for i, n in enumerate(G.nodes())}
-    components = [sorted(c, key=order.__getitem__)
-                  for c in nx.connected_components(G) if len(c) >= min_component_size]
+    components = [
+        sorted(c, key=order.__getitem__)
+        for c in nx.connected_components(G)
+        if len(c) >= min_component_size
+    ]
     components.sort(key=len, reverse=True)
 
     selected: list = []

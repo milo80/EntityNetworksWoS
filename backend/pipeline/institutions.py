@@ -103,8 +103,9 @@ def _institution_department(row) -> str | None:
     return row["institution"]
 
 
-def enrich_with_institution_data(df_exploded: pd.DataFrame,
-                                 address_column: str = "Addresses") -> pd.DataFrame:
+def enrich_with_institution_data(
+    df_exploded: pd.DataFrame, address_column: str = "Addresses"
+) -> pd.DataFrame:
     """Attach institution/department/city/country to each author-article row.
 
     Matched by author name within the same article (affiliations vary per paper).
@@ -134,20 +135,25 @@ def enrich_with_institution_data(df_exploded: pd.DataFrame,
 
     total = len(df_exploded)
     matched = df_exploded["institution"].notna().sum()
-    log.info("Matched institution for %d/%d author-article rows (%.0f%%); "
-             "%d institutions, %d institution+department pairs, %d countries",
-             matched, total, 100 * matched / total if total else 0,
-             df_exploded["institution"].nunique(),
-             df_exploded["institution_department"].nunique(),
-             df_exploded["country"].nunique())
+    log.info(
+        "Matched institution for %d/%d author-article rows (%.0f%%); "
+        "%d institutions, %d institution+department pairs, %d countries",
+        matched,
+        total,
+        100 * matched / total if total else 0,
+        df_exploded["institution"].nunique(),
+        df_exploded["institution_department"].nunique(),
+        df_exploded["country"].nunique(),
+    )
     return df_exploded
 
 
-def prepare_article_institution_data(df: pd.DataFrame, address_column: str = "Reprint Addresses",
-                                     doc_types: tuple[str, ...] = ("Article", "Review"),
-                                     attr_columns: tuple[str, ...] = ("Article Title", "Source Title",
-                                                                      "Publication Year"),
-                                     ) -> pd.DataFrame:
+def prepare_article_institution_data(
+    df: pd.DataFrame,
+    address_column: str = "Reprint Addresses",
+    doc_types: tuple[str, ...] = ("Article", "Review"),
+    attr_columns: tuple[str, ...] = ("Article Title", "Source Title", "Publication Year"),
+) -> pd.DataFrame:
     """Article-level df for the institution keyword relation (one row per article).
 
     Each article is anchored to its corresponding author's institution (from
@@ -166,15 +172,29 @@ def prepare_article_institution_data(df: pd.DataFrame, address_column: str = "Re
     df["institution_department"] = df.apply(_institution_department, axis=1)
 
     resolved = df["institution"].notna().sum()
-    log.info("Resolved corresponding-author institution for %d/%d articles (%.0f%%); "
-             "%d institutions, %d institution+department pairs, %d countries",
-             resolved, len(df), 100 * resolved / len(df) if len(df) else 0,
-             df["institution"].nunique(), df["institution_department"].nunique(),
-             df["country"].nunique())
+    log.info(
+        "Resolved corresponding-author institution for %d/%d articles (%.0f%%); "
+        "%d institutions, %d institution+department pairs, %d countries",
+        resolved,
+        len(df),
+        100 * resolved / len(df) if len(df) else 0,
+        df["institution"].nunique(),
+        df["institution_department"].nunique(),
+        df["country"].nunique(),
+    )
 
     df = parse_keyword_columns(df)
 
-    keep_cols = [ARTICLE_ID, "autors_list", "author_keywords", "keywords_plus",
-                 "institution", "department", "city", "country",
-                 "institution_department", *attr_columns]
+    keep_cols = [
+        ARTICLE_ID,
+        "autors_list",
+        "author_keywords",
+        "keywords_plus",
+        "institution",
+        "department",
+        "city",
+        "country",
+        "institution_department",
+        *attr_columns,
+    ]
     return df[keep_cols]

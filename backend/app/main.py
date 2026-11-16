@@ -1,6 +1,6 @@
 """FastAPI application.
 
-    uvicorn app.main:app --proxy-headers   (in production behind Caddy)
+uvicorn app.main:app --proxy-headers   (in production behind Caddy)
 """
 
 from __future__ import annotations
@@ -36,9 +36,13 @@ def create_app() -> FastAPI:
     )
 
     if settings.allowed_origins:
-        app.add_middleware(CORSMiddleware, allow_origins=settings.allowed_origins,
-                           allow_credentials=True, allow_methods=["GET", "POST", "DELETE"],
-                           allow_headers=[settings.csrf_header, "Content-Type"])
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.allowed_origins,
+            allow_credentials=True,
+            allow_methods=["GET", "POST", "DELETE"],
+            allow_headers=[settings.csrf_header, "Content-Type"],
+        )
 
     for module in (health, auth, datasets, runs):
         app.include_router(module.router, prefix="/api")
