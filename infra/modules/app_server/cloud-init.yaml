@@ -1,0 +1,27 @@
+#cloud-config
+# Runs once, on the server's first boot: Docker with Compose v2, git, swap.
+# Ubuntu already allows SSH keys only and installs security updates daily.
+
+package_update: true
+package_upgrade: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - git
+
+# Container logs rotate instead of filling the disk.
+write_files:
+  - path: /etc/docker/daemon.json
+    content: |
+      {"log-driver": "json-file", "log-opts": {"max-size": "10m", "max-file": "3"}}
+
+# Headroom for image builds on a 2 GB server.
+swap:
+  filename: /swapfile
+  size: 2G
+  maxsize: 2G
+
+runcmd:
+  - systemctl enable --now docker
+  - usermod -aG docker ubuntu
+  - install -d -o ubuntu -g ubuntu /opt/entitynetworks

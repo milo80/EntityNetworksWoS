@@ -36,3 +36,10 @@ deploy/backups/
 # Playwright
 frontend/test-results/
 frontend/playwright-report/
+
+# Terraform: state and personal values stay local (.terraform.lock.hcl IS committed)
+infra/**/.terraform/
+infra/**/*.tfstate
+infra/**/*.tfstate.*
+infra/**/terraform.tfvars
+infra/**/crash.log

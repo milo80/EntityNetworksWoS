@@ -24,6 +24,10 @@
   configuration differs. Images are built once in CI and promoted from QA to
   PROD without rebuilding. *(Target, not yet implemented: today
   `deploy/README.md` builds the images on the server.)*
+- **Servers:** `infra/` (Terraform) creates one EC2 server per environment that
+  runs `deploy/compose.yaml`. QA and PROD use the same module; only the values in
+  `infra/envs/<env>/main.tf` differ, and each has its own state. No ECS until
+  the app needs more than one instance (it runs one API process and one worker).
 - **Tests run in CI, not on servers.** Unit and integration tests run in CI jobs
   on throwaway runners. The smoke test and Playwright e2e run from CI against QA.
   *(Target, not yet implemented: no QA server yet; CI runs them against a
