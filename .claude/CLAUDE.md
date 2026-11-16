@@ -35,3 +35,18 @@
   or PROD.
 - **The test:** a fresh clone plus `podman compose up --build` in `deploy/` works
   with nothing installed but podman.
+
+## Host commands (for now)
+
+Claude runs in a toolbox; podman is on the host (`flatpak-spawn --host podman ...`).
+
+- **Claude may run on its own** podman commands for developing this project, from this
+  repository: `podman compose` in `deploy/` (`up -d --build`, `down`, `ps`, `logs`, `exec`,
+  `run`, `restart`, `build`), the dev PostgreSQL container from the README (start, stop,
+  create), and inspecting these containers and images.
+- **Ask first** for everything else, in particular: anything that deletes data
+  (`down -v`, `volume rm`, `system prune`, removing the dev database), anything touching
+  containers or images of other projects, system installs (`rpm-ostree`, `dnf`, `flatpak`),
+  `sudo`, systemd units, and anything that reaches servers or registries (pushing images,
+  `terraform apply`). For those, give the exact command; I want to follow what happens.
+- This changes once the development-to-production chain is automated.

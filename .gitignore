@@ -43,3 +43,6 @@ infra/**/*.tfstate
 infra/**/*.tfstate.*
 infra/**/terraform.tfvars
 infra/**/crash.log
+
+# Claude Code personal settings (machine-specific)
+.claude/settings.local.json
