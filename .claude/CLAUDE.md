@@ -31,8 +31,13 @@
 - **Tests run in CI, not on servers.** Unit and integration tests run in CI jobs
   on throwaway runners. The smoke test and Playwright e2e run from CI against QA.
   *(Target, not yet implemented: no QA server yet; CI runs them against a
-  throwaway Compose stack on the runner.)* Test tools are never deployed to QA
-  or PROD.
+  throwaway Compose stack on the runner.)* *(Target, not yet implemented: no
+  PROD deploy job yet.)* After a PROD deploy, CI runs a read-only smoke check
+  against PROD (health endpoint, login page loads, correct version); it creates
+  no data. Test tools are never deployed to QA or PROD.
+- **Local runs are for feedback, CI decides.** Tests may run locally against
+  a local stack while developing; a change counts as passing only when CI
+  passes.
 - **The test:** a fresh clone plus `podman compose up --build` in `deploy/` works
   with nothing installed but podman.
 
