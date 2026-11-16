@@ -123,6 +123,9 @@ jobs:
           npm run e2e
         env:
           E2E_BASE_URL: https://localhost:8443
+          # The password reset test reads its link from the API log (no SMTP in CI).
+          # Runs from frontend/, the step's working directory.
+          E2E_API_LOGS_CMD: cd ../deploy && docker compose logs --no-color api
       - name: Backup script
         working-directory: deploy
         run: ./backup.sh && ls -l backups
