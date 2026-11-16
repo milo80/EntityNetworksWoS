@@ -267,7 +267,7 @@ def run(args: argparse.Namespace) -> int:
     try:
         for name, fn in steps:
             s.step(name, fn)
-    except (SmokeFailure, httpx.HTTPError, ValueError):
+    except SmokeFailure, httpx.HTTPError, ValueError:
         print(
             f"\nFAILED after {s.passed}/{len(steps)} checks "
             f"(dataset {state.get('dataset_id', '-')} left in place for inspection)"

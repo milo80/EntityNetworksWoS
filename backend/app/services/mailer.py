@@ -40,7 +40,7 @@ def send_email(settings: Settings, to: str, subject: str, body: str) -> None:
             if settings.smtp_username and settings.smtp_password:
                 smtp.login(settings.smtp_username, settings.smtp_password.get_secret_value())
             smtp.send_message(msg)
-    except (smtplib.SMTPException, OSError):
+    except smtplib.SMTPException, OSError:
         log.exception("Sending email to %s failed (subject: %s)", to, subject)
         return
     log.info("Email sent to %s (subject: %s)", to, subject)

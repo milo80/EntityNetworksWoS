@@ -8,7 +8,7 @@ from app.services import mailer
 
 
 class FakeSMTP:
-    instances: ClassVar[list["FakeSMTP"]] = []
+    instances: ClassVar[list[FakeSMTP]] = []
 
     def __init__(self, host, port, timeout):
         self.host, self.port, self.timeout = host, port, timeout

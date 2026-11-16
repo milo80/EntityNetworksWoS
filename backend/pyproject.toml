@@ -2,7 +2,7 @@
 name = "entitynetworks"
 version = "0.1.0"
 description = "WoS bibliometric entity networks - pipeline and API"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
     "pandas>=2.2",
     "python-calamine>=0.2",
@@ -39,13 +39,13 @@ include = ["app*", "pipeline*"]
 [tool.ruff]
 extend-exclude = ["alembic/versions"]
 line-length = 100
-target-version = "py312"
+target-version = "py314"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 files = ["app", "pipeline"]
 plugins = ["pydantic.mypy"]
 warn_unused_ignores = true
