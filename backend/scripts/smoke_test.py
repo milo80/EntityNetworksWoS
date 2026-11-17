@@ -37,7 +37,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-import httpx
+import httpx2 as httpx
 
 from pipeline.schema import validate_network
 

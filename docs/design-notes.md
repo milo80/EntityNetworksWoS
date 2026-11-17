@@ -198,8 +198,11 @@ session. Worker tests use tests/fixtures/synthetic_wos.py (made-up records, safe
 to commit), so they also run in CI without the licensed WoS sample.
 
 Known open items:
-- Starlette warns that its TestClient will want the `httpx2` package instead of
-  `httpx`. Not switched yet: the package wasn't vetted. Harmless for now.
+- (Fixed 2026-11-16) Tests and the smoke test use `httpx2` instead of `httpx`,
+  as Starlette's TestClient asks (it warned with `httpx`). httpx2 is published
+  from github.com/pydantic/httpx2 by httpx's author (BSD-3); it brings
+  `httpcore2` and `truststore` (system trust store for TLS). Dev-only: the
+  images install `[api]` without it.
 - (Fixed in step 6) uvicorn's access log lines are now JSON too
   (`app/log_config.json`).
 

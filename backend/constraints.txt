@@ -14,9 +14,9 @@ dnspython==2.9.2
 email-validator==2.3.0
 fastapi==0.162.5
 h11==0.16.0
-httpcore==1.0.9
+httpcore2==2.16.2
 httptools==0.9.0
-httpx==0.28.1
+httpx2==2.16.2
 idna==3.20
 iniconfig==2.3.1
 librt==0.16.0
@@ -47,6 +47,7 @@ PyYAML==6.0.3
 ruff==0.17.5
 SQLAlchemy==2.1.8
 starlette==1.10.0
+truststore==0.10.5
 typing-inspection==0.4.5
 typing_extensions==4.16.0
 tzdata==2026.6
