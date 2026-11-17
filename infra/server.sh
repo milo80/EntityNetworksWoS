@@ -15,18 +15,23 @@
 #                     deploy always asks (leave the host empty for no email)
 # Environment:
 #   REPO_URL          git URL the server clones (default: the public GitHub repo)
+#   IMAGE_PREFIX      registry the images come from (default: ghcr.io/milo80/)
 #   QA_BACKUP_DIR     where `save` puts backups (default: envs/qa/backups)
 #
 # Running `deploy` again on a server that is already set up updates it: it backs
-# up the running stack, checks out --ref and rebuilds. Its .env is kept.
+# up the running stack, checks out --ref and switches to its images. Its .env is
+# kept. Servers never build images: deploy pulls the ones CI built and tested
+# for that commit, so it fails until CI has passed on it.
 # The SMTP password is typed here and sent over SSH's stdin, never as an argument.
 set -euo pipefail
 
 REPO_URL=${REPO_URL:-https://github.com/milo80/EntityNetworksWoS.git}
+# CI pushes the images it tested here, tagged with the full commit SHA.
+IMAGE_PREFIX=${IMAGE_PREFIX:-ghcr.io/milo80/}
 APP_DIR=/opt/entitynetworks
 
 usage() {
-    sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
 }
 
@@ -147,23 +152,33 @@ if $ask_smtp; then
 fi
 
 # New session, so the docker group from cloud-init applies.
-remote_script "$APP_DIR" "$REPO_URL" "$ref" "$address" <<'EOF'
+remote_script "$APP_DIR" "$REPO_URL" "$ref" "$address" "$IMAGE_PREFIX" <<'EOF'
 set -euo pipefail
-app_dir=$1 repo_url=$2 ref=$3 address=$4
+app_dir=$1 repo_url=$2 ref=$3 address=$4 prefix=$5
 
 if [ ! -d "$app_dir/.git" ]; then
     git clone --quiet "$repo_url" "$app_dir"
 fi
 cd "$app_dir/deploy"
+git -C "$app_dir" fetch --quiet origin
+tag=$(git -C "$app_dir" rev-parse "$ref^{commit}")
+
+# Pull first: if CI hasn't published images for this commit, stop before
+# anything on the server changes.
+echo "pulling the images CI built for $tag..."
+for name in entitynetworks-api entitynetworks-web; do
+    if ! docker pull --quiet "$prefix$name:$tag" >/dev/null; then
+        echo "no image $prefix$name:$tag: has CI passed on this commit (and are the packages public)?" >&2
+        exit 1
+    fi
+done
 
 # Updating a running stack: back it up first.
 if [ -f .env ] && [ -n "$(docker compose ps -q db 2>/dev/null)" ]; then
     ./backup.sh
 fi
 
-git -C "$app_dir" fetch --quiet origin
-git -C "$app_dir" checkout --quiet --detach "$ref"
-tag=$(git -C "$app_dir" rev-parse --short HEAD)
+git -C "$app_dir" checkout --quiet --detach "$tag"
 
 if [ ! -f .env ]; then
     # The secret is generated here and never leaves the server.
@@ -177,6 +192,11 @@ if [ ! -f .env ]; then
 fi
 chmod 600 .env
 sed -i "s/^TAG=.*/TAG=$tag/" .env
+if grep -q '^IMAGE_PREFIX=' .env; then
+    sed -i "s|^IMAGE_PREFIX=.*|IMAGE_PREFIX=$prefix|" .env
+else
+    echo "IMAGE_PREFIX=$prefix" >> .env
+fi
 EOF
 
 if [[ -n "$smtp_host" ]]; then
@@ -210,8 +230,8 @@ fi
 remote_script "$APP_DIR" <<'EOF'
 set -euo pipefail
 cd "$1/deploy"
-echo "building and starting $(sed -n 's/^TAG=//p' .env) (takes several minutes on a small server)..."
-docker compose up -d --build --quiet-pull
+echo "starting $(sed -n 's/^TAG=//p' .env)..."
+docker compose up -d --no-build --quiet-pull
 EOF
 
 if [[ -n "$restore" ]]; then

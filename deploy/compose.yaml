@@ -8,9 +8,15 @@
 # the internal network.
 name: entitynetworks
 
+# Servers pull the images CI built and tested (IMAGE_PREFIX=ghcr.io/<owner>/,
+# TAG=<commit SHA>); local runs and CI build them (empty prefix).
 x-app: &app
-  image: entitynetworks-api:${TAG:-local}
-  build: ../backend
+  image: ${IMAGE_PREFIX:-}entitynetworks-api:${TAG:-local}
+  build:
+    context: ../backend
+    labels:
+      # Links the published image to the repository on GitHub.
+      org.opencontainers.image.source: https://github.com/milo80/EntityNetworksWoS
   restart: unless-stopped
   environment:
     APP_ENV: production
@@ -75,8 +81,11 @@ services:
         condition: service_completed_successfully
 
   web:
-    image: entitynetworks-web:${TAG:-local}
-    build: ../frontend
+    image: ${IMAGE_PREFIX:-}entitynetworks-web:${TAG:-local}
+    build:
+      context: ../frontend
+      labels:
+        org.opencontainers.image.source: https://github.com/milo80/EntityNetworksWoS
     restart: unless-stopped
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-localhost}

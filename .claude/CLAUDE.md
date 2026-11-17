@@ -22,16 +22,17 @@
   version in the Dockerfile and local dev.
 - **QA and PROD run the same stack.** Same images and compose services; only
   configuration differs. Images are built once in CI and promoted from QA to
-  PROD without rebuilding. *(Target, not yet implemented: today
-  `deploy/README.md` builds the images on the server.)*
+  PROD without rebuilding: CI's `stack` job pushes the images it tested to GHCR
+  (tag = commit SHA) and `infra/server.sh deploy` pulls them. *(Target, not yet
+  implemented: PROD and its promotion step don't exist yet.)*
 - **Servers:** `infra/` (Terraform) creates one EC2 server per environment that
   runs `deploy/compose.yaml`. QA and PROD use the same module; only the values in
   `infra/envs/<env>/main.tf` differ, and each has its own state. No ECS until
   the app needs more than one instance (it runs one API process and one worker).
 - **Tests run in CI, not on servers.** Unit and integration tests run in CI jobs
   on throwaway runners. The smoke test and Playwright e2e run from CI against QA.
-  *(Target, not yet implemented: no QA server yet; CI runs them against a
-  throwaway Compose stack on the runner.)* *(Target, not yet implemented: no
+  *(Target, not yet implemented: CI runs them against a throwaway Compose stack
+  on the runner, not yet against the QA server.)* *(Target, not yet implemented: no
   PROD deploy job yet.)* After a PROD deploy, CI runs a read-only smoke check
   against PROD (health endpoint, login page loads, correct version); it creates
   no data. Test tools are never deployed to QA or PROD.

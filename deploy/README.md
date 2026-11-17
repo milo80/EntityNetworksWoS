@@ -94,11 +94,18 @@ docker compose exec api python -m app.manage set-password someone@example.org
 
 ## Updating
 
+On a server made with `infra/`, run `infra/server.sh qa deploy` from your machine.
+It backs up, then switches to the images CI built and tested for the commit
+(`ghcr.io/milo80/entitynetworks-{api,web}:<full SHA>`) without building
+anything on the server. By hand, on the server:
+
 ```
-cd /opt/entitynetworks && git pull
-cd deploy && sed -i "s/^TAG=.*/TAG=$(git rev-parse --short HEAD)/" .env
-./backup.sh && docker compose up -d --build
+cd /opt/entitynetworks && git fetch && git checkout --detach <commit>
+cd deploy && sed -i "s/^TAG=.*/TAG=$(git rev-parse HEAD)/" .env   # with IMAGE_PREFIX=ghcr.io/milo80/ in .env
+./backup.sh && docker compose pull api web && docker compose up -d --no-build
 ```
+
+A server without `IMAGE_PREFIX` builds its own images instead (`docker compose up -d --build`).
 
 `migrate` applies new migrations before api/worker restart. The worker finishes
 the network build it is running before it stops (up to 2 minutes). To roll back,
@@ -141,5 +148,6 @@ docker compose start api worker
 - **Logs** are JSON lines on stdout (API, worker, Caddy): `docker compose logs -f api worker`.
 - **No high availability**: if the VM is lost, rebuild it from these steps and the
   off-server backups.
-- Images are built on the server from the git checkout. Pushing prebuilt images
-  to a registry (GHCR) is a later step if build time on the server becomes a problem.
+- **Images come from CI.** On every push to `main` that passes, the CI `stack` job
+  pushes the images it tested to GHCR, tagged with the commit SHA. Servers pull
+  those; only local runs and CI build.

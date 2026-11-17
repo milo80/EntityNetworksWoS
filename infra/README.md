@@ -65,7 +65,8 @@ a **new URL**. To keep the accounts and data across a rebuild:
 ```
 
 `deploy` waits for first-boot setup, clones the repo into `/opt/entitynetworks`,
-checks out `--ref` (default `origin/main`), and writes `.env` with a newly generated
+checks out `--ref` (default `origin/main`), pulls the images CI built and tested for
+that commit (it never builds on the server, so CI must have passed on it), and writes `.env` with a newly generated
 database password (the secret is created on the server and never copied). On a new
 server it also asks for the email (SMTP) settings for password reset links; leave the
 host empty for none, and use `--smtp` to set or change them later. It then

@@ -76,6 +76,9 @@ jobs:
   stack:
     needs: [backend, frontend]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # publish the tested images to GHCR (main only)
     steps:
       - uses: actions/checkout@v7
       - name: Configure the stack (local TLS, registration on for the tests)
@@ -131,6 +134,21 @@ jobs:
       - name: Backup script
         working-directory: deploy
         run: ./backup.sh && ls -l backups
+      # The images this job just tested are the ones servers run: deploy pulls
+      # them by commit SHA and never builds (infra/server.sh).
+      - name: Publish the tested images
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          owner=$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')
+          for name in entitynetworks-api entitynetworks-web; do
+            docker tag "$name:$GITHUB_SHA" "ghcr.io/$owner/$name:$GITHUB_SHA"
+            docker push --quiet "ghcr.io/$owner/$name:$GITHUB_SHA"
+          done
       - name: Logs on failure
         if: failure()
         working-directory: deploy
