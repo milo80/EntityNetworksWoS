@@ -94,6 +94,7 @@ resource "aws_instance" "server" {
   vpc_security_group_ids  = [aws_security_group.server.id]
   user_data               = file("${path.module}/cloud-init.yaml")
   disable_api_termination = var.termination_protection
+  iam_instance_profile    = var.offsite_backups ? aws_iam_instance_profile.server[0].name : null
 
   metadata_options {
     http_tokens = "required" # IMDSv2 only
@@ -123,4 +124,85 @@ resource "aws_eip" "server" {
   tags = {
     Name = var.name
   }
+}
+
+# --- Off-server backups (offsite_backups = true) ---
+# deploy/backup.sh uploads each backup to this bucket. The server's role may
+# only add objects: it can't list, read or delete them, so a compromised server
+# can't destroy the copies. S3 deletes them after backup_retention_days.
+
+data "aws_caller_identity" "current" {}
+
+resource "aws_s3_bucket" "backups" {
+  count = var.offsite_backups ? 1 : 0
+
+  # Bucket names are global across AWS: the account ID makes this one unique.
+  bucket        = "${var.name}-backups-${data.aws_caller_identity.current.account_id}"
+  force_destroy = false # destroying the environment never deletes its backups
+}
+
+resource "aws_s3_bucket_public_access_block" "backups" {
+  count = var.offsite_backups ? 1 : 0
+
+  bucket                  = aws_s3_bucket.backups[0].id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "backups" {
+  count = var.offsite_backups ? 1 : 0
+
+  bucket = aws_s3_bucket.backups[0].id
+
+  rule {
+    id     = "expire-old-backups"
+    status = "Enabled"
+    filter {}
+
+    expiration {
+      days = var.backup_retention_days
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
+}
+
+resource "aws_iam_role" "server" {
+  count = var.offsite_backups ? 1 : 0
+
+  name = var.name
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "ec2.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "server_backups" {
+  count = var.offsite_backups ? 1 : 0
+
+  name = "write-backups"
+  role = aws_iam_role.server[0].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "s3:PutObject"
+      Resource = "${aws_s3_bucket.backups[0].arn}/*"
+    }]
+  })
+}
+
+resource "aws_iam_instance_profile" "server" {
+  count = var.offsite_backups ? 1 : 0
+
+  name = var.name
+  role = aws_iam_role.server[0].name
 }

@@ -11,3 +11,8 @@ output "ssh" {
 output "instance_id" {
   value = aws_instance.server.id
 }
+
+output "backup_bucket" {
+  description = "S3 bucket for off-server backups (null when offsite_backups is off)."
+  value       = var.offsite_backups ? aws_s3_bucket.backups[0].bucket : null
+}

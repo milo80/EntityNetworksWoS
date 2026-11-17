@@ -23,8 +23,9 @@
 - **QA and PROD run the same stack.** Same images and compose services; only
   configuration differs. Images are built once in CI and promoted from QA to
   PROD without rebuilding: CI's `stack` job pushes the images it tested to GHCR
-  (tag = commit SHA) and `infra/server.sh deploy` pulls them. *(Target, not yet
-  implemented: PROD and its promotion step don't exist yet.)*
+  (tag = commit SHA) and `infra/server.sh deploy` pulls them. Promotion is
+  manual for now: `infra/server.sh prod deploy` deploys the commit QA runs.
+  PROD has no domain yet (sslip.io, like QA) while it's a proof of concept.
 - **Servers:** `infra/` (Terraform) creates one EC2 server per environment that
   runs `deploy/compose.yaml`. QA and PROD use the same module; only the values in
   `infra/envs/<env>/main.tf` differ, and each has its own state. No ECS until

@@ -1,26 +1,30 @@
 #!/usr/bin/env bash
 # Set up the app on a server created by `./tf.sh <env> apply`, and save its data
 # before `./tf.sh <env> destroy`. Runs from your machine over SSH; it never runs
-# Terraform. Only QA for now.
+# Terraform.
 #
 #   ./server.sh qa save                     # backup on the server, copied here
-#   ./server.sh qa deploy                   # clone, .env, build, start, cron, health
+#   ./server.sh qa deploy                   # clone, .env, pull, start, cron, health
 #   ./server.sh qa deploy --restore <dir>   # ...then restore a saved backup
+#   ./server.sh prod deploy                 # promote the commit QA runs to PROD
 #
 # Options:
 #   --ip <address>    server IP (default: public_ip from envs/<env>/terraform.tfstate)
-#   --ref <git ref>   what to deploy (default: origin/main)
-#   --yes             restore without asking
+#   --ref <git ref>   what to deploy (default: origin/main for QA; for PROD the
+#                     commit QA runs now, so PROD gets what was tested on QA)
+#   --yes             deploy to PROD / restore without asking
 #   --smtp            ask for the email (SMTP) settings again; a new server's
 #                     deploy always asks (leave the host empty for no email)
 # Environment:
 #   REPO_URL          git URL the server clones (default: the public GitHub repo)
 #   IMAGE_PREFIX      registry the images come from (default: ghcr.io/milo80/)
-#   QA_BACKUP_DIR     where `save` puts backups (default: envs/qa/backups)
+#   SAVE_DIR          where `save` puts backups (default: envs/<env>/backups)
 #
 # Running `deploy` again on a server that is already set up updates it: it backs
 # up the running stack, checks out --ref and switches to its images. Its .env is
-# kept. Servers never build images: deploy pulls the ones CI built and tested
+# kept. If Terraform created an off-server backup bucket (PROD), its name goes
+# into .env as BACKUP_S3_URI, and backup.sh copies each backup there.
+# Servers never build images: deploy pulls the ones CI built and tested
 # for that commit, so it fails until CI has passed on it.
 # The SMTP password is typed here and sent over SSH's stdin, never as an argument.
 set -euo pipefail
@@ -31,17 +35,17 @@ IMAGE_PREFIX=${IMAGE_PREFIX:-ghcr.io/milo80/}
 APP_DIR=/opt/entitynetworks
 
 usage() {
-    sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
 }
 
 env="${1:-}"
 cmd="${2:-}"
-[[ "$env" == "qa" ]] || { echo "only 'qa' is supported for now" >&2; usage; }
+[[ "$env" == "qa" || "$env" == "prod" ]] || usage
 [[ "$cmd" == "save" || "$cmd" == "deploy" ]] || usage
 shift 2
 
-ip="" ref="origin/main" restore="" yes=false ask_smtp=false
+ip="" ref="" restore="" yes=false ask_smtp=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --ip) ip="$2"; shift 2 ;;
@@ -55,15 +59,20 @@ done
 
 # Paths you pass are relative to where you run the script; the defaults to infra/.
 [[ -z "$restore" ]] || restore=$(realpath "$restore")
-[[ -z "${QA_BACKUP_DIR:-}" ]] || QA_BACKUP_DIR=$(realpath -m "$QA_BACKUP_DIR")
+[[ -z "${SAVE_DIR:-}" ]] || SAVE_DIR=$(realpath -m "$SAVE_DIR")
 cd "$(dirname "$0")"
 
-if [[ -z "$ip" ]]; then
-    ip=$(python3 -c '
+# Prints a Terraform output of an environment, or nothing.
+tf_output() {
+    python3 -c '
 import json, sys
 outputs = json.load(open(sys.argv[1])).get("outputs", {})
-print(outputs.get("public_ip", {}).get("value", ""))
-' "envs/$env/terraform.tfstate" 2>/dev/null || true)
+print(outputs.get(sys.argv[2], {}).get("value") or "")
+' "envs/$1/terraform.tfstate" "$2" 2>/dev/null || true
+}
+
+if [[ -z "$ip" ]]; then
+    ip=$(tf_output "$env" public_ip)
     [[ -n "$ip" ]] || { echo "no server in envs/$env/terraform.tfstate: run ./tf.sh $env apply, or pass --ip" >&2; exit 1; }
 fi
 host="ubuntu@$ip"
@@ -95,7 +104,7 @@ EOF
     uploads_file=$(sed -n 2p <<<"$files")
     stamp=$(basename "$db_file" .dump)
     stamp=${stamp#db-}
-    dest="${QA_BACKUP_DIR:-envs/qa/backups}/$stamp"
+    dest="${SAVE_DIR:-envs/$env/backups}/$stamp"
     umask 077  # the dump holds password hashes and user data
     mkdir -p "$dest"
     scp "${ssh_opts[@]}" -q "$host:$APP_DIR/deploy/$db_file" "$host:$APP_DIR/deploy/$uploads_file" "$dest/"
@@ -106,6 +115,22 @@ EOF
 fi
 
 # --- deploy ---
+
+# PROD gets what QA runs, unless --ref says otherwise.
+if [[ -z "$ref" && "$env" == "prod" ]]; then
+    qa_ip=$(tf_output qa public_ip)
+    [[ -n "$qa_ip" ]] && ref=$(ssh "${ssh_opts[@]}" "ubuntu@$qa_ip" \
+        "sed -n 's/^TAG=//p' $APP_DIR/deploy/.env" </dev/null 2>/dev/null || true)
+    [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || { echo "can't read the commit QA runs: pass --ref <commit>" >&2; exit 1; }
+    echo "QA runs $ref"
+fi
+ref=${ref:-origin/main}
+if [[ "$env" == "prod" ]] && ! $yes; then
+    read -r -p "Deploy $ref to PROD (https://$address)? [y/N] " answer
+    [[ "$answer" == [yY]* ]] || { echo "cancelled" >&2; exit 1; }
+fi
+backup_bucket=$(tf_output "$env" backup_bucket)
+backup_uri=${backup_bucket:+s3://$backup_bucket/}
 
 if [[ -n "$restore" ]]; then
     db_dump=$(ls "$restore"/db-*.dump 2>/dev/null | tail -1 || true)
@@ -152,9 +177,9 @@ if $ask_smtp; then
 fi
 
 # New session, so the docker group from cloud-init applies.
-remote_script "$APP_DIR" "$REPO_URL" "$ref" "$address" "$IMAGE_PREFIX" <<'EOF'
+remote_script "$APP_DIR" "$REPO_URL" "$ref" "$address" "$IMAGE_PREFIX" "$backup_uri" <<'EOF'
 set -euo pipefail
-app_dir=$1 repo_url=$2 ref=$3 address=$4 prefix=$5
+app_dir=$1 repo_url=$2 ref=$3 address=$4 prefix=$5 backup_uri=$6
 
 if [ ! -d "$app_dir/.git" ]; then
     git clone --quiet "$repo_url" "$app_dir"
@@ -192,10 +217,17 @@ if [ ! -f .env ]; then
 fi
 chmod 600 .env
 sed -i "s/^TAG=.*/TAG=$tag/" .env
-if grep -q '^IMAGE_PREFIX=' .env; then
-    sed -i "s|^IMAGE_PREFIX=.*|IMAGE_PREFIX=$prefix|" .env
-else
-    echo "IMAGE_PREFIX=$prefix" >> .env
+# Set NAME=value in .env, adding the line if it's missing.
+set_env() {
+    if grep -q "^$1=" .env; then
+        sed -i "s|^$1=.*|$1=$2|" .env
+    else
+        echo "$1=$2" >> .env
+    fi
+}
+set_env IMAGE_PREFIX "$prefix"
+if [ -n "$backup_uri" ]; then
+    set_env BACKUP_S3_URI "$backup_uri"
 fi
 EOF
 

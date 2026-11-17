@@ -35,3 +35,15 @@ variable "termination_protection" {
   type        = bool
   default     = false
 }
+
+variable "offsite_backups" {
+  description = "true: an S3 bucket for off-server backups, and a server role that may only write to it."
+  type        = bool
+  default     = false
+}
+
+variable "backup_retention_days" {
+  description = "Days S3 keeps each off-server backup."
+  type        = number
+  default     = 30
+}

@@ -32,6 +32,7 @@ module "server" {
   instance_type          = "t3.small"
   root_volume_gb         = 30
   termination_protection = true # the database lives on this server
+  offsite_backups        = true # daily backups also go to S3 (see infra/README.md)
 
   ssh_public_key    = var.ssh_public_key
   ssh_allowed_cidrs = var.ssh_allowed_cidrs
@@ -56,4 +57,8 @@ output "public_ip" {
 
 output "ssh" {
   value = module.server.ssh
+}
+
+output "backup_bucket" {
+  value = module.server.backup_bucket
 }

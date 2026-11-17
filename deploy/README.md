@@ -124,8 +124,11 @@ needs root):
 15 3 * * *  /opt/entitynetworks/deploy/backup.sh >> $HOME/entitynetworks-backup.log 2>&1
 ```
 
-**Copy the backups off the server** (rclone/rsync to object storage or another
-machine). A backup that lives only on the VM is lost with the VM.
+**Copy the backups off the server.** A backup that lives only on the VM is lost
+with the VM. With `BACKUP_S3_URI=s3://<bucket>/` in `.env`, `backup.sh` also
+uploads both files there (pinned `amazon/aws-cli` container, credentials from the
+server's IAM role). On PROD, `infra/server.sh` sets this from the bucket Terraform
+creates; see "PROD" in `infra/README.md`.
 
 Restore (stack running; this replaces the current data):
 
