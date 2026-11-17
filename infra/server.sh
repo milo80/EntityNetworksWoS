@@ -11,19 +11,22 @@
 #   --ip <address>    server IP (default: public_ip from envs/<env>/terraform.tfstate)
 #   --ref <git ref>   what to deploy (default: origin/main)
 #   --yes             restore without asking
+#   --smtp            ask for the email (SMTP) settings again; a new server's
+#                     deploy always asks (leave the host empty for no email)
 # Environment:
 #   REPO_URL          git URL the server clones (default: the public GitHub repo)
 #   QA_BACKUP_DIR     where `save` puts backups (default: envs/qa/backups)
 #
 # Running `deploy` again on a server that is already set up updates it: it backs
 # up the running stack, checks out --ref and rebuilds. Its .env is kept.
+# The SMTP password is typed here and sent over SSH's stdin, never as an argument.
 set -euo pipefail
 
 REPO_URL=${REPO_URL:-https://github.com/milo80/EntityNetworksWoS.git}
 APP_DIR=/opt/entitynetworks
 
 usage() {
-    sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
 }
 
@@ -33,13 +36,14 @@ cmd="${2:-}"
 [[ "$cmd" == "save" || "$cmd" == "deploy" ]] || usage
 shift 2
 
-ip="" ref="origin/main" restore="" yes=false
+ip="" ref="origin/main" restore="" yes=false ask_smtp=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --ip) ip="$2"; shift 2 ;;
         --ref) ref="$2"; shift 2 ;;
         --restore) restore="$2"; shift 2 ;;
         --yes) yes=true; shift ;;
+        --smtp) ask_smtp=true; shift ;;
         *) usage ;;
     esac
 done
@@ -119,6 +123,29 @@ echo "waiting for first-boot setup (cloud-init)..."
 # Exit status 2 means done with warnings, which is fine.
 remote 'cloud-init status --wait >/dev/null; rc=$?; [ $rc -eq 0 ] || [ $rc -eq 2 ]'
 
+# Email for password reset links: asked on a new server (no .env yet) or with
+# --smtp, before the long build. The values stay in this shell's memory.
+smtp_host=""
+new_server=false
+remote "test -f $APP_DIR/deploy/.env" || { new_server=true; ask_smtp=true; }
+if $ask_smtp; then
+    if [[ -t 0 ]]; then
+        echo "Email for password reset links (SMTP, port 587 with STARTTLS)."
+        echo "Leave the host empty to send no email (links then go to the API log)."
+        read -r -p "SMTP host (e.g. email-smtp.us-east-1.amazonaws.com): " smtp_host
+        if [[ -n "$smtp_host" ]]; then
+            read -r -p "SMTP user name: " smtp_user
+            read -r -s -p "SMTP password (not shown): " smtp_pass; echo
+            read -r -p "From (e.g. EntityNetworks <you@example.org>): " smtp_from
+            for value in "$smtp_host" "$smtp_user" "$smtp_pass" "$smtp_from"; do
+                [[ -n "$value" && "$value" != *"'"* ]] || { echo "SMTP values must be non-empty and contain no single quote" >&2; exit 1; }
+            done
+        fi
+    else
+        echo "not a terminal: no email set up (run again with --smtp to add it)"
+    fi
+fi
+
 # New session, so the docker group from cloud-init applies.
 remote_script "$APP_DIR" "$REPO_URL" "$ref" "$address" <<'EOF'
 set -euo pipefail
@@ -150,8 +177,40 @@ if [ ! -f .env ]; then
 fi
 chmod 600 .env
 sed -i "s/^TAG=.*/TAG=$tag/" .env
+EOF
 
-echo "building and starting $tag (takes several minutes on a small server)..."
+if [[ -n "$smtp_host" ]]; then
+    # Values go on stdin, so they never show up in a process list. The script
+    # rewrites .env with shell builtins only, for the same reason. Single quotes
+    # keep Compose from reading "$" in a password as a variable.
+    script=$(cat <<'EOF'
+set -euo pipefail
+cd "$1/deploy"
+IFS= read -r host; IFS= read -r user; IFS= read -r pass; IFS= read -r from
+umask 077
+: > .env.new
+while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+        SMTP_HOST=*) line="SMTP_HOST=$host" ;;
+        SMTP_USERNAME=*) line="SMTP_USERNAME=$user" ;;
+        SMTP_PASSWORD=*) line="SMTP_PASSWORD='$pass'" ;;
+        SMTP_FROM=*) line="SMTP_FROM='$from'" ;;
+    esac
+    printf '%s\n' "$line" >> .env.new
+done < .env
+mv .env.new .env
+echo "email settings written to .env"
+EOF
+    )
+    printf '%s\n' "$smtp_host" "$smtp_user" "$smtp_pass" "$smtp_from" |
+        ssh "${ssh_opts[@]}" "$host" "bash -c $(printf '%q' "$script") remote $(printf '%q' "$APP_DIR")"
+    unset smtp_pass
+fi
+
+remote_script "$APP_DIR" <<'EOF'
+set -euo pipefail
+cd "$1/deploy"
+echo "building and starting $(sed -n 's/^TAG=//p' .env) (takes several minutes on a small server)..."
 docker compose up -d --build --quiet-pull
 EOF
 
@@ -188,7 +247,7 @@ echo "waiting for https://$address/api/health (Caddy gets its certificate first)
 for _ in $(seq 24); do
     if curl -fsS -m 10 "https://$address/api/health" >/dev/null 2>&1; then
         echo "ready: https://$address"
-        if [[ -z "$restore" ]]; then
+        if $new_server && [[ -z "$restore" ]]; then
             echo "empty database: create the admin with"
             echo "  ssh -t $host 'cd $APP_DIR/deploy && docker compose exec api python -m app.manage create-user you@example.org --admin'"
         fi

@@ -66,7 +66,9 @@ a **new URL**. To keep the accounts and data across a rebuild:
 
 `deploy` waits for first-boot setup, clones the repo into `/opt/entitynetworks`,
 checks out `--ref` (default `origin/main`), and writes `.env` with a newly generated
-database password (the secret is created on the server and never copied). It then
+database password (the secret is created on the server and never copied). On a new
+server it also asks for the email (SMTP) settings for password reset links; leave the
+host empty for none, and use `--smtp` to set or change them later. It then
 builds and starts the stack, restores the backup if one is given, adds the daily
 backup cron job and waits for `/api/health`. Without `--restore` the database is
 empty, and the script prints the `create-user` command for the admin.
