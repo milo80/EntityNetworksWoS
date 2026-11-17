@@ -105,10 +105,12 @@ changed the schema needs the database backup restored.
 
 `./backup.sh` writes `backups/db-<time>.dump` (pg_dump, custom format) and
 `backups/uploads-<time>.tar.gz`, keeping 14 days (`KEEP_DAYS`). With Podman:
-`COMPOSE="podman compose" ./backup.sh`. Daily cron:
+`COMPOSE="podman compose" ./backup.sh`. Daily cron, in the crontab of the user that
+runs the stack (`crontab -e`; the log goes to that user's home, since `/var/log`
+needs root):
 
 ```
-15 3 * * *  /opt/entitynetworks/deploy/backup.sh >> /var/log/entitynetworks-backup.log 2>&1
+15 3 * * *  /opt/entitynetworks/deploy/backup.sh >> $HOME/entitynetworks-backup.log 2>&1
 ```
 
 **Copy the backups off the server** (rclone/rsync to object storage or another

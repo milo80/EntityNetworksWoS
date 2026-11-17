@@ -5,9 +5,10 @@
 #   BACKUP_DIR=/srv/backups KEEP_DAYS=30 deploy/backup.sh
 #   COMPOSE="podman compose" deploy/backup.sh
 #
-# Daily cron on the server (and copy the directory OFF the server, e.g. with
-# rclone or rsync, so a lost VM doesn't take its backups with it):
-#   15 3 * * *  /opt/entitynetworks/deploy/backup.sh >> /var/log/entitynetworks-backup.log 2>&1
+# Daily cron on the server, in the crontab of the user that runs the stack
+# (and copy the directory OFF the server, e.g. with rclone or rsync, so a lost
+# VM doesn't take its backups with it):
+#   15 3 * * *  /opt/entitynetworks/deploy/backup.sh >> $HOME/entitynetworks-backup.log 2>&1
 #
 # Restore: see "Backups" in deploy/README.md.
 set -euo pipefail

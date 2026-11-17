@@ -77,7 +77,8 @@ resource "aws_security_group" "server" {
   }
 
   egress {
-    description      = "All outbound (packages, images, Let's Encrypt)"
+    # AWS allows only [0-9A-Za-z_ .:/()#,@[]+=&;{}!$*-] here: no apostrophes.
+    description      = "All outbound (packages, images, Lets Encrypt)"
     from_port        = 0
     to_port          = 0
     protocol         = "-1"
