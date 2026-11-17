@@ -69,7 +69,9 @@ jobs:
       - run: npm run build
       - name: Generated API types match docs/openapi.json
         run: npm run gen:api && git diff --exit-code src/api/schema.d.ts
-      - run: npm audit --audit-level=high
+      # Blocks on what ships to the browser. Dev tools (vite, eslint, vitest)
+      # never reach users; Dependabot opens PRs for their advisories.
+      - run: npm audit --omit=dev --audit-level=high
 
   stack:
     needs: [backend, frontend]
