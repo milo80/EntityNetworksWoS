@@ -41,6 +41,10 @@ CI (`.github/workflows/ci.yml`) does exactly this on every push.
 
 ## First deployment to a server
 
+On a server made with `infra/` (Terraform), `infra/server.sh qa deploy` does all of
+this, plus saving and restoring the data across a rebuild: see `infra/README.md`.
+By hand:
+
 Needs: a Linux VM with Docker (Compose v2) and ~2 GB RAM, a domain whose DNS A/AAAA
 record points at it, and ports 80 and 443 open (Let's Encrypt needs 80).
 

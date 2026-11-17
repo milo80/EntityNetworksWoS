@@ -43,6 +43,8 @@ infra/**/*.tfstate
 infra/**/*.tfstate.*
 infra/**/terraform.tfvars
 infra/**/crash.log
+# Server backups saved by infra/server.sh (password hashes, user data)
+infra/envs/*/backups/
 
 # Claude Code personal settings (machine-specific)
 .claude/settings.local.json

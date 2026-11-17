@@ -44,12 +44,37 @@ Wait 2-3 minutes for first-boot setup, then check it:
 ssh ubuntu@<public_ip> 'cloud-init status --wait && docker compose version'
 ```
 
-Then point the domain's DNS A record at `public_ip` and follow
-`deploy/README.md`, "First deployment to a server".
+Then set up the app with `./server.sh qa deploy` (below). It does the steps of
+`deploy/README.md`, "First deployment to a server", using
+`<public_ip with dashes>.sslip.io` (e.g. `3-120-45-67.sslip.io`) as `SITE_ADDRESS`.
+That name resolves to the IP, so Caddy can still get a real certificate without
+a domain.
 
-No domain yet? For QA you can use `<public_ip with dashes>.sslip.io` (e.g.
-`3-120-45-67.sslip.io`) as `SITE_ADDRESS`: it resolves to that IP, so Caddy
-can still get a real certificate.
+## Set up, save and rebuild QA: `server.sh`
+
+`./tf.sh qa destroy` deletes the server's disk. That loses the database (all
+accounts and datasets), the uploads, the backups kept on the server, its `.env`
+and its certificate. It also releases the IP, so the next apply gets a new IP and
+a **new URL**. To keep the accounts and data across a rebuild:
+
+```
+./server.sh qa save                          # backup on the server, copied to envs/qa/backups/<time>/
+./tf.sh qa destroy                           # on the host
+./tf.sh qa apply                             # on the host, later
+./server.sh qa deploy --restore envs/qa/backups/<time>
+```
+
+`deploy` waits for first-boot setup, clones the repo into `/opt/entitynetworks`,
+checks out `--ref` (default `origin/main`), and writes `.env` with a newly generated
+database password (the secret is created on the server and never copied). It then
+builds and starts the stack, restores the backup if one is given, adds the daily
+backup cron job and waits for `/api/health`. Without `--restore` the database is
+empty, and the script prints the `create-user` command for the admin.
+
+Running `deploy` again on a running server updates it: it backs up first, checks
+out `--ref` and rebuilds, and keeps `.env`. `save` needs only SSH. The saved files
+hold password hashes: they're owner-only and git-ignored, and they stay on this
+machine.
 
 ## PROD
 
