@@ -114,7 +114,9 @@ ssh -t ubuntu@<public_ip> 'cd /opt/entitynetworks/deploy && docker compose exec 
 
 To restore PROD from S3, download a `db-<time>.dump` and its `uploads-<time>.tar.gz`
 (S3 console -> the bucket -> Download) into a new directory, then
-`./server.sh prod deploy --restore <dir>`. `./server.sh prod save` also copies the
+`./server.sh prod deploy --restore <dir>`. Browsers may save the uploads file as
+`uploads-<time>.tar`: it is still gzip-compressed, so rename it back to `.tar.gz`
+(`server.sh` looks for that name). `./server.sh prod save` also copies the
 latest backup to `envs/prod/backups/<time>/` on this machine.
 
 ## The state files
