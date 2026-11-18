@@ -7,13 +7,14 @@ institution networks (co-authorship, shared-keyword collaboration).
 
 | Path | Contents |
 |---|---|
-| `backend/pipeline/` | WoS -> NetworkX -> network JSON (refactor of the legacy script) |
+| `backend/pipeline/` | WoS -> NetworkX -> network JSON (refactor of the original demo script) |
 | `backend/app/` | FastAPI service: auth, datasets, network runs, worker |
 | `backend/tests/` | pytest (pipeline golden snapshots, API tests) |
+| `backend/scripts/` | smoke test, network comparison, synthetic test data |
 | `frontend/` | React + TypeScript + Vite UI (Cytoscape.js graph explorer) |
 | `deploy/` | Docker Compose, Caddyfile, backup script, deployment runbook |
-| `docs/` | Design notes and `network.schema.json` (generated: `python -m pipeline.schema`) |
-| `legacy/` | Original demo, kept as the reference implementation |
+| `infra/` | Terraform for the QA and PROD servers, `server.sh` to deploy them |
+| `docs/` | Design notes, workflow, `openapi.json` and `network.schema.json` (both generated) |
 | `data/wos/` | Raw WoS `.xls` exports (local only, git-ignored) |
 
 ## Status
@@ -26,41 +27,79 @@ institution networks (co-authorship, shared-keyword collaboration).
   Alembic migrations, API tests against PostgreSQL.
 - Step 5 (done): React UI - login, datasets, dataset data page, network explorer
   (see `frontend/README.md`).
-- Step 6 (done, not yet deployed to a server): Docker Compose stack with Caddy,
-  CI, browser tests, backups - see [`deploy/README.md`](deploy/README.md).
+- Step 6 (done): Docker Compose stack with Caddy, CI, browser tests, backups -
+  see [`deploy/README.md`](deploy/README.md). QA and PROD servers: [`infra/README.md`](infra/README.md).
+
+## Where things are documented
+
+| Topic | File |
+|---|---|
+| Day-to-day commands, local -> CI -> QA -> PROD | [`docs/workflow.md`](docs/workflow.md) |
+| Development setup, pipeline, tests, smoke test, API | this file |
+| Frontend commands, layout and tests | [`frontend/README.md`](frontend/README.md) |
+| Compose stack, manual deploy, email, backups, limits | [`deploy/README.md`](deploy/README.md) |
+| Terraform, `server.sh`, QA and PROD | [`infra/README.md`](infra/README.md) |
+| Design decisions and their reasons | [`docs/design-notes.md`](docs/design-notes.md) |
 
 ## Setup
 
+Python 3.14, the same version as the API image (`backend/Dockerfile`). The
+constraints file pins every dependency to the versions CI and the image use:
+
     cd backend
-    python3 -m venv .venv && .venv/bin/pip install -e '.[api,dev]'
+    python3.14 -m venv .venv && .venv/bin/pip install -c constraints.txt -e '.[api,dev]'
 
 ## Pipeline only (no database)
 
-    .venv/bin/python -m pipeline.cli ../data/wos -o out/      # writes network_*.json
+From `backend/`:
 
-Relations: `author` (co-authorship) and `institution_keywords` (shared rare
-keywords). See `python -m pipeline.cli --help` for options.
+    .venv/bin/python -m pipeline.cli ../data/wos -o out/
+
+It writes one `network_<relation>.json` per relation into `out/`. Relations:
+`author` (co-authorship) and `institution_keywords` (shared rare keywords). See
+`.venv/bin/python -m pipeline.cli --help` for options.
 
 ## Back-end (local development)
 
 PostgreSQL 16 on localhost:5432. On Fedora Silverblue the toolbox has no
-podman, so start it **on the host** (the toolbox shares the host network):
+podman, so create it **on the host** once (the toolbox shares the host network):
 
     podman run -d --name entitynet-db \
       -e POSTGRES_USER=entitynet -e POSTGRES_PASSWORD=entitynet -e POSTGRES_DB=entitynet \
       -p 127.0.0.1:5432:5432 -v entitynet-pgdata:/var/lib/postgresql/data \
       docker.io/library/postgres:16
 
-Then, from `backend/` (copy `../.env.example` to `.env` to change settings):
+Later sessions only need `podman start entitynet-db`.
 
-    .venv/bin/alembic upgrade head                                  # create/upgrade tables
-    COOKIE_SECURE=false .venv/bin/uvicorn app.main:app --reload     # API on :8000, docs at /api/docs
-    .venv/bin/python -m app.worker                                  # in a second terminal
+Then, from `backend/` (copy `../.env.example` to `.env` to change settings),
+create or upgrade the tables and start the API (on :8000, API docs at
+`/api/docs`) and, in a second terminal, the worker:
+
+    .venv/bin/alembic upgrade head
+    COOKIE_SECURE=false .venv/bin/uvicorn app.main:app --reload
+    .venv/bin/python -m app.worker
+
+Run exactly one worker: see "Limits" in
+[`deploy/README.md`](deploy/README.md#limits-and-rules-of-this-setup).
+
+The UI runs separately with Vite: see [`frontend/README.md`](frontend/README.md).
+
+### Accounts
+
+Locally, registration is open (`ALLOW_REGISTRATION=true` by default). Servers
+close it, so accounts are created with a command, which asks for the password:
+
     .venv/bin/python -m app.manage create-user you@example.org --admin
+    .venv/bin/python -m app.manage set-password someone@example.org
 
-Run exactly one worker (see docs/design-notes.md).
+Leave out `--admin` for a normal user. `set-password` also ends all of that
+user's sessions. On a server the same commands run inside the `api` container:
+see "Accounts on a server" in
+[`deploy/README.md`](deploy/README.md#accounts-on-a-server).
 
 ## Tests
+
+From `backend/`:
 
     .venv/bin/python -m pytest
 
@@ -69,21 +108,51 @@ Run exactly one worker (see docs/design-notes.md).
   they are skipped if PostgreSQL isn't reachable.
 - Golden and real-data end-to-end tests need `data/wos/`; skipped otherwise.
 
+CI (`.github/workflows/ci.yml`) also runs `ruff check .`, `ruff format --check .`,
+`mypy` and `pip-audit`. Frontend tests: see [`frontend/README.md`](frontend/README.md#tests).
+
 ### Smoke test (running system)
 
-Checks a running API + worker + database over HTTP: health, login, CSRF
-rejection, upload, network build, download (schema, ETag), optional comparison
-with a golden file, cleanup, logout. It deletes what it uploaded.
+`backend/scripts/smoke_test.py` checks a running API + worker + database over
+HTTP: health, login, CSRF rejection, upload, network build, download (schema,
+ETag), optional comparison with a golden file, cleanup, logout. It deletes what
+it uploaded (unless `--keep`) and exits non-zero on the first failure. It runs
+from the dev machine, never on a server.
 
-    COOKIE_SECURE=false .venv/bin/uvicorn app.main:app --port 8000 &
-    .venv/bin/python -m app.worker &
+Against the local API and worker from "Back-end" above, from `backend/`
+(`--register` creates the account; it needs registration open):
+
     .venv/bin/python scripts/smoke_test.py --register \
         --email smoke@example.org --password 'some-long-password' \
         --golden tests/fixtures/golden/network_author.json
 
-Against the Compose stack add `--base-url https://localhost:8443 --insecure
---proxy` (see `deploy/README.md`). Against production (registration off) pre-create the account with
-`python -m app.manage create-user` and pass `SMOKE_EMAIL` / `SMOKE_PASSWORD`.
+Options:
+
+| Option | |
+|---|---|
+| `--base-url <url>` | default `http://127.0.0.1:8000` |
+| `--email`, `--password` | the account; default from `SMOKE_EMAIL` / `SMOKE_PASSWORD` |
+| `--register` | create the account first (needs `ALLOW_REGISTRATION=true`) |
+| `--wos-dir <dir>` | the `.xls` files to upload; default `data/wos/`. Without the licensed data use `tests/fixtures` (synthetic) |
+| `--golden <file>` | the network must equal this JSON (only with `data/wos/`) |
+| `--relation` | `author` (default) or `institution_keywords` |
+| `--proxy` | also check Caddy in front: UI served, deep links, security headers, compression |
+| `--insecure` / `--ca-cert <file>` | for Caddy's local certificate |
+| `--keep` | don't delete the dataset at the end |
+
+Against the local Compose stack: see "Run it locally" in
+[`deploy/README.md`](deploy/README.md#run-it-locally-or-in-ci). Against a server,
+where registration is off, create the account there first (see
+[Accounts](#accounts)) and pass it in the environment, so the password isn't in
+the command line:
+
+    SMOKE_EMAIL=smoke@example.org SMOKE_PASSWORD=<password> .venv/bin/python scripts/smoke_test.py \
+        --base-url https://<server address> --proxy --wos-dir tests/fixtures
+
+**Crash recovery** is checked by hand, locally: queue a run, `kill -9` the
+worker while the run is `running`, start a new worker. It logs "Recovered 1
+orphaned run(s)" and finishes the run. To find the worker's PID, don't use
+`pgrep -f 'app.worker'` from a script: it also matches the script's own shell.
 
 ## API
 
@@ -91,15 +160,19 @@ Against the Compose stack add `--base-url https://localhost:8443 --insecure
 |---|---|---|
 | POST | `/api/auth/register`, `/api/auth/login`, `/api/auth/logout` | session cookie + CSRF token |
 | GET | `/api/auth/me` | current user + CSRF token |
+| POST | `/api/auth/password-reset/request`, `/api/auth/password-reset/confirm` | email a one-time link / set the new password |
 | POST/GET | `/api/datasets` | upload WoS `.xls` files (multipart: `name`, `files`) / list |
 | GET/DELETE | `/api/datasets/{id}` | |
+| GET | `/api/datasets/{id}/profile` | overview of the uploaded data (computed by the worker) |
 | POST/GET | `/api/runs` | queue `{dataset_id, relation, params?}` / list |
 | GET/DELETE | `/api/runs/{id}` | status: queued, running, succeeded, failed |
 | GET | `/api/runs/{id}/network`, `/api/runs/{id}/export` | network JSON (ETag) / as download |
 | GET | `/api/health` | |
 
-Every POST/DELETE must send the `X-CSRF-Token` header (value from login/me or
-the `entitynet_csrf` cookie).
+Every POST/DELETE made with a session must send the `X-CSRF-Token` header
+(value from login/me or the `entitynet_csrf` cookie). Register, login and
+password reset don't need it. The full API is in `docs/openapi.json`
+(generated; the `/api-change` skill regenerates it).
 
 ## Data
 

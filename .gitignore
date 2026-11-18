@@ -1,6 +1,7 @@
 # Raw WoS exports (licensed source data) - kept locally, not in git
 data/
-legacy/WoS
+# The original demo, removed from git (see git history), may be kept locally
+legacy/
 
 # Python
 __pycache__/

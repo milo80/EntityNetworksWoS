@@ -5,10 +5,16 @@ network-graph web app. Two halves, kept in sync via a shared JSON schema:
 
 Python pipeline (entity_relation_generator*.py) — reads WoS .xls
 exports, builds NetworkX graphs, exports web-ready JSON.
-Frontend viewer (network_graph_prototype.html) — a single
+(Superseded in step 2: the pipeline is backend/pipeline/; the original script
+is legacy/entity_relation_generator12.py.)
+Frontend viewer (legacy/graph_network_prototype2.html) — a single
 self-contained HTML file (Cytoscape.js) that loads any JSON matching the
 schema below via a file picker, with filtering, search, and a synced
 readable/JSON side panel.
+(Superseded in step 5: the React app in frontend/ replaces it; the prototype
+stays as the reference its parity test runs.)
+(Removed after step 6: legacy/ is no longer in the repository; the prototype
+and the original script are in git history.)
 
 Relations built so far
 
@@ -17,9 +23,42 @@ authors, edges = co-authorship on an article.
 Institution/department network — nodes = institution (or
 "institution — department"), edges = co-publication.
 Country network — nodes = countries, edges = international collaboration.
+(Superseded in step 2: the pipeline builds two relations, `author` and
+`institution_keywords` (institutions linked by shared rare keywords). The
+institution/department and country networks are commented out in the legacy
+script and were not ported.)
 
 Current JSON schema (the frontend's contract — don't change this shape without updating the frontend too)
-{  "nodes": [    {      "id": "ORCID, or LOCAL-<hash>, or an institution/country name — never a raw author name",      "name": "human-readable display name",      "team": "drives node color + the Group filter — a real attribute (e.g. country) or a detected community",      "role": "short description, e.g. '14 co-authors'",      "attr": { "institution": "...", "department": "...", "city": "...",                "author_keywords": ["...", "..."], "keywords_plus": ["...", "..."] }    }  ],  "edges": [    { "source": "id", "target": "id", "type": "collaborates_with | co_publishes_with | ...", "weight": 1 }  ]}
+(Superseded in step 3: the source of truth is backend/pipeline/schema.py and
+the generated docs/network.schema.json. The sketch below shows the shape.)
+
+```json
+{
+  "nodes": [
+    {
+      "id": "ORCID, or LOCAL-<hash>, or an institution/country name — never a raw author name",
+      "name": "human-readable display name",
+      "team": "drives node color + the Group filter — a real attribute (e.g. country) or a detected community",
+      "role": "short description, e.g. '14 co-authors'",
+      "attr": {
+        "institution": "...",
+        "department": "...",
+        "city": "...",
+        "author_keywords": ["...", "..."],
+        "keywords_plus": ["...", "..."]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "id",
+      "target": "id",
+      "type": "collaborates_with | co_publishes_with | ...",
+      "weight": 1
+    }
+  ]
+}
+```
 
 attr is optional per node, display/search-only — it never drives graph
 color or the Group/Relationship filters. This applies for Author co-authorship network
@@ -54,6 +93,9 @@ deduped case-insensitively — not "most common single value" like institution.
 Frontend filtering is 100% client-side, no backend, by design — appropriate
 at current scale (tens–low hundreds of nodes). Revisit only if the dataset
 grows into the thousands or needs to be live/access-controlled.
+(Superseded in steps 4-5: there is now a backend with login that stores
+datasets and builds the networks. Filtering itself still runs in the browser,
+in frontend/src/lib/visibility.ts.)
 
 Frontend UI conventions established
 
@@ -72,6 +114,8 @@ Data loading: file picker (<input type="file"> + FileReader) is the
 reliable path — opening the HTML via file:// blocks plain fetch() of
 local files. A best-effort fetch('network_sample.json') auto-load exists
 as a bonus for when the page is served over http.
+(Superseded in step 5: networks load from the API; a local JSON file can still
+be opened in the Explorer at /local, and it is never uploaded.)
 
 Working conventions for this project
 
@@ -92,6 +136,7 @@ waiting on a thesaurus file from the user.
 Keyword co-occurrence as its own relation/dataset.
 A backend/API layer — deferred until data scale or access-control needs
 actually require it.
+(Superseded in step 4: the FastAPI backend was built, see "Back-end (step 4)".)
 
 
 
@@ -104,7 +149,7 @@ except for two determinism fixes:
 - build_connected_sample() no longer iterates Python sets of node ids, so the
   sample (and node/edge order) no longer varies with PYTHONHASHSEED. Degree ties
   are broken by the graph's node insertion order.
-Because of this, legacy/outputs/*.json (produced by a slightly older script
+Because of this, legacy/outputs/*.json (removed with legacy/; produced by a slightly older script
 version, non-reproducibly) are NOT the test reference; the reference is
 backend/tests/fixtures/golden/, byte-identical to the legacy script with only
 those two fixes applied.
@@ -150,7 +195,8 @@ Decisions that differ from the original plan, and why:
   cookie and in the login/me response; every POST/PUT/PATCH/DELETE must echo it
   in X-CSRF-Token.
 - Rate limiting: a small in-memory fixed-window limiter instead of slowapi.
-  Correct only for a single API process - which is the deployment model.
+  Correct only for a single API process - which is the deployment model (the
+  rule is in deploy/README.md, "Limits").
 - Password reset by emailed one-time link: a random 256-bit token, stored only
   as SHA-256 (like sessions), single-use, valid PASSWORD_RESET_TTL_MINUTES (30),
   and a new request voids older links. The request endpoint always answers 202
@@ -158,8 +204,9 @@ Decisions that differ from the original plan, and why:
   so neither the content nor the timing reveals whether an account exists.
   Setting a password ends all of the user's sessions. Mail goes over SMTP with
   stdlib smtplib (no extra service); without SMTP_HOST the message is logged
-  instead. Admins can also run `python -m app.manage set-password`, and create
-  accounts with `create-user`; ALLOW_REGISTRATION=false closes signup.
+  instead. Admins can also set a password and create accounts from the command
+  line (app.manage, see "Accounts" in README.md); ALLOW_REGISTRATION=false
+  closes signup.
 - Login failures for unknown emails and wrong passwords return the same
   response and take the same time (Argon2 verify runs against a dummy hash).
 
@@ -182,8 +229,9 @@ On startup the worker requeues runs left 'running' (up to WORKER_MAX_ATTEMPTS,
 then marks them failed). This assumes exactly ONE worker process: a second
 worker starting up would requeue a run the first is still processing. Seen in
 practice during smoke testing, when a previous session's processes survived a
-restart. Deployment must guarantee a single worker; more workers would need a
-heartbeat column instead. Step 6 enforces it: the worker holds a PostgreSQL
+restart. Deployment must guarantee a single worker (the rule is in
+deploy/README.md, "Limits"); more workers would need a heartbeat column
+instead. Step 6 enforces it: the worker holds a PostgreSQL
 advisory lock for its lifetime, on a connection detached from the pool (closing a
 pooled connection only returns it to the pool, which would keep the lock), so a
 second worker exits with an error.
@@ -216,10 +264,11 @@ for the API tests (most of its checks are also covered there) and is not part
 of the pytest suite, since it needs running servers. Step 6 runs it in CI after
 `docker compose up` and after each deploy; it exits non-zero on the first
 failure and cleans up after itself.
-Crash recovery is checked manually, locally: queue a run, `kill -9` the worker
-while the run is 'running', start a new worker, and it logs "Recovered 1
-orphaned run(s)" and finishes the run. (When finding the worker PID, don't use
-`pgrep -f 'app.worker'` from a script - it also matches the script's own shell.)
+(Not yet: CI runs it only against the stack on its own runner. After a deploy
+it is run by hand from the dev machine; running it from CI against QA is a
+target.)
+Crash recovery is not covered by the smoke test: it is checked manually,
+locally, by killing the worker mid-run (steps in README.md, "Smoke test").
 
 
 Frontend (step 5)
@@ -231,7 +280,8 @@ the Explorer (/runs/:id, or /local for a local JSON file that is never uploaded)
 No separate Runs page: runs always belong to a dataset.
 
 Explorer: every prototype rule is kept (lib/visibility.ts; a parity test runs
-the prototype itself in jsdom and compares). Layout changes: filters | graph |
+the prototype itself in jsdom and compares; it was removed with legacy/, and
+visibility.test.ts covers the rules). Layout changes: filters | graph |
 details with the graph at 50% initially and draggable (and keyboard-resizable)
 dividers; no cards inside panels; the group filter list doubles as the legend
 (color swatch + count), so there is no separate legend row; attribute search
@@ -292,8 +342,9 @@ Referrer-Policy, Permissions-Policy, frame-ancestors 'none', no Server header
 upload-size limitation above: oversized requests get 413 before the API.
 Hashed /assets/* are cached immutable, everything else no-cache.
 
-API process: one uvicorn process (in-memory rate limiter), --proxy-headers so
-the rate limiter sees the client IP from Caddy.
+API process: one uvicorn process, because the rate limiter keeps its counts
+in memory (rule: deploy/README.md, "Limits"); --proxy-headers so the rate
+limiter sees the client IP from Caddy.
 
 CI without licensed data: backend/tests/fixtures/synthetic_wos.xls is the
 synthetic fixture written as a real legacy .xls (scripts/make_synthetic_xls.py,
@@ -307,3 +358,10 @@ script. mypy now runs in CI (pydantic plugin; pandas/networkx untyped).
 Not done: no server exists yet, so nothing is deployed; deploy/README.md is the
 runbook. Images are built on the server from git; a registry (GHCR) and
 automated deploys come when there is a server to deploy to.
+(Superseded after step 6: infra/ (Terraform) creates one server per
+environment, QA and PROD, and infra/server.sh deploys them. Servers no longer
+build: CI's stack job pushes the images it tested to GHCR, tagged with the
+commit SHA, and servers pull those, so a server can only run a commit CI
+passed, and the image that runs is the one that was tested. PROD gets the
+commit QA runs (promotion). Deploys are still started by hand. How:
+infra/README.md and deploy/README.md.)

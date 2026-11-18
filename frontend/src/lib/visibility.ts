@@ -1,6 +1,7 @@
 // Single source of truth for what is visible: the graph, the Readable list and
 // the JSON view all read visibleNodes()/visibleEdges() from here, so they can
-// never disagree. Ported from legacy/graph_network_prototype2.html, same rules:
+// never disagree. Ported from the original prototype viewer (no longer in the
+// repository; see git history), same rules:
 //
 // - Group checkboxes: a node is hidden when its team is unchecked.
 // - Relationship checkboxes: hide EDGES of unchecked types only, never nodes.
