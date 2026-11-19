@@ -49,3 +49,7 @@ infra/envs/*/backups/
 
 # Claude Code personal settings (machine-specific)
 .claude/settings.local.json
+
+# Local research write-ups (deep-research skill), not part of the repo
+reports/
+research_notes/
