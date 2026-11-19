@@ -39,7 +39,7 @@ export function LoginPage() {
         <div>
           <h1>{isLogin ? "Log in" : "Create an account"}</h1>
           <p className="muted small" style={{ marginTop: 4 }}>
-            EntityNetworks · research collaboration networks
+            Entity Networks · research collaboration networks
           </p>
         </div>
         <div className="field">

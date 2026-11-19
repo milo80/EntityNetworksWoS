@@ -422,8 +422,8 @@ describe("navigation", () => {
     renderApp("/datasets");
 
     expect(await screen.findByRole("heading", { name: "Datasets" })).toBeInTheDocument();
-    expect(screen.getByText("EntityNetworks")).not.toHaveAttribute("href");
-    expect(screen.queryByRole("link", { name: "EntityNetworks" })).toBeNull();
+    expect(screen.getByText("Entity Networks")).not.toHaveAttribute("href");
+    expect(screen.queryByRole("link", { name: "Entity Networks" })).toBeNull();
     expect(within(nav()).getByRole("link", { name: "Datasets" })).toHaveAttribute(
       "aria-current",
       "page",

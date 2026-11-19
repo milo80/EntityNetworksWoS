@@ -20,7 +20,7 @@ export function Layout() {
     <div className="shell">
       <header className="topbar">
         <div className="topbar-title">
-          <span className="app-title">EntityNetworks</span>
+          <span className="app-title">Entity Networks</span>
           <div className="account">
             <span className="account-email">{session?.user.email}</span>
             <button
