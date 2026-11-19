@@ -1,8 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 
 import { api, type NetworkOptions, type Relation, type RunCreate } from "../api/client";
 import { ErrorNote } from "../components/common";
+import { clearFormState, loadFormState, saveFormState } from "../lib/buildFormState";
 import { RELATION_LABEL, useNetworkOptions } from "../lib/runLabels";
 
 export const runsKey = (datasetId: number) => ["runs", datasetId] as const;
@@ -109,7 +110,12 @@ const LINKS_HELP: Partial<Record<Relation, string>> = {
 
 type LinkKind = NetworkOptions["links"][number]["kind"];
 
-function fieldsFor(relation: Relation, kind: LinkKind | undefined, model: string): FieldName[] {
+function fieldsFor(
+  relation: Relation | null,
+  kind: LinkKind | undefined,
+  model: string,
+): FieldName[] {
+  if (relation === null) return [];
   if (relation === "author") return ["topN", "maxAuthors"];
   if (relation === "institution_keywords") {
     return ["topN", "maxAuthors", "minShared", "maxKeywordPct"];
@@ -134,32 +140,46 @@ function fieldProblem(name: FieldName, text: string): string | null {
 
 const percent = (share: number) => String(Math.round(share * 100));
 
+const DEFAULT_VALUES: Record<FieldName, string> = {
+  topN: DEFAULT_TOP_N.author,
+  maxAuthors: "15",
+  minShared: "3",
+  maxKeywordPct: "12",
+  minItems: "3",
+  maxItemPct: "5",
+  similarityPct: "50",
+  maxWordPct: "5",
+};
+const DEFAULT_CUSTOM = { entity: "institution", link: "keywords", model: "word_matching" };
+
 export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
   const qc = useQueryClient();
   const options = useNetworkOptions(datasetId);
-  const [relation, setRelation] = useState<Relation>("author");
+  // Kept per dataset while you look elsewhere (View data, an explorer) and
+  // come back; a first visit starts collapsed with no relationship chosen.
+  const [saved] = useState(() => loadFormState(datasetId));
+  const [relation, setRelation] = useState<Relation | null>(saved?.relation ?? null);
   // The fields keep the text as typed, so a field can be emptied while editing.
   const [values, setValues] = useState<Record<FieldName, string>>({
-    topN: DEFAULT_TOP_N.author,
-    maxAuthors: "15",
-    minShared: "3",
-    maxKeywordPct: "12",
-    minItems: "3",
-    maxItemPct: "5",
-    similarityPct: "50",
-    maxWordPct: "5",
+    ...DEFAULT_VALUES,
+    ...(saved?.values as Partial<Record<FieldName, string>> | undefined),
   });
-  const [custom, setCustom] = useState({
-    entity: "institution",
-    link: "keywords",
-    model: "word_matching",
-  });
+  const [custom, setCustom] = useState(saved?.custom ?? DEFAULT_CUSTOM);
+  const [expanded, setExpanded] = useState(saved?.expanded ?? false);
+  const [moreOpen, setMoreOpen] = useState(saved?.moreOpen ?? false);
+  useEffect(() => {
+    saveFormState(datasetId, { relation, values, custom, expanded, moreOpen });
+  }, [datasetId, relation, values, custom, expanded, moreOpen]);
   // A field's problem is shown once the user has left it.
   const [touched, setTouched] = useState<Set<FieldName>>(new Set());
 
   const create = useMutation({
     mutationFn: (body: RunCreate) => api.createRun(body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: runsKey(datasetId) }),
+    onSuccess: () => {
+      // Fold the panel so the new network shows in the list; the settings stay.
+      setExpanded(false);
+      return qc.invalidateQueries({ queryKey: runsKey(datasetId) });
+    },
   });
 
   const opts = options.data;
@@ -187,6 +207,7 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
 
   const chooseRelation = (r: Relation) => {
     setRelation(r);
+    setExpanded(true);
     setValues((v) => {
       const next = { ...v, topN: DEFAULT_TOP_N[r] };
       if (r === "custom" && opts) {
@@ -252,8 +273,20 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
     </ParamRow>
   );
 
+  const reset = () => {
+    clearFormState(datasetId);
+    setRelation(null);
+    setValues(DEFAULT_VALUES);
+    setCustom(DEFAULT_CUSTOM);
+    setExpanded(false);
+    setMoreOpen(false);
+    setTouched(new Set());
+    create.reset();
+  };
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
+    if (relation === null) return;
     if (!canBuild) {
       setTouched(new Set(active));
       return;
@@ -297,128 +330,177 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
 
   return (
     <form className="panel-form" onSubmit={onSubmit} aria-label="Build network" noValidate>
-      <ParamRow id="relation" label="Relationship" help={RELATION_HELP[relation]}>
+      <div className="panel-head">
+        <h3 className="panel-title">Create network</h3>
+        {relation && (
+          <button
+            type="button"
+            className="icon-btn panel-collapse"
+            aria-label={expanded ? "Hide settings" : "Show settings"}
+            title={expanded ? "Hide settings" : "Show settings"}
+            aria-expanded={expanded}
+            onClick={() => setExpanded((x) => !x)}
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+              <path
+                d={expanded ? "M3.5 10 8 5.5 12.5 10" : "M3.5 6 8 10.5 12.5 6"}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        )}
+      </div>
+      <ParamRow
+        id="relation"
+        label="Relationship"
+        help={relation ? RELATION_HELP[relation] : "Pick what to build; its settings open below."}
+      >
         <select
           id="relation"
           className="select"
-          value={relation}
+          value={relation ?? ""}
           aria-describedby="relation-help"
           onChange={(e) => chooseRelation(e.target.value as Relation)}
         >
+          <option value="" disabled>
+            Choose a relationship…
+          </option>
           <option value="author">{RELATION_LABEL.author}</option>
           <option value="institution_keywords">{RELATION_LABEL.institution_keywords}</option>
           <option value="custom">Custom…</option>
         </select>
+        {relation && expanded && (
+          <div className="panel-toggles">
+            <button type="button" className="btn btn-link" onClick={reset}>
+              Reset
+            </button>
+          </div>
+        )}
       </ParamRow>
 
-      <ParamGroup title="Nodes" subtitle="what each dot is">
-        {relation === "custom" && opts && (
-          <ParamRow
-            id="custom-entity"
-            label="Nodes"
-            help="What each dot in the graph is. All of them that appear on the same article can be linked to each other."
-          >
-            <select
-              id="custom-entity"
-              className="select"
-              value={custom.entity}
-              aria-describedby="custom-entity-help"
-              onChange={(e) => chooseEntity(e.target.value)}
-            >
-              {opts.entities.map((o) => (
-                <option key={o.key} value={o.key} disabled={!o.available}>
-                  {o.available ? o.label : `${o.label} (not in this data)`}
-                </option>
-              ))}
-            </select>
-          </ParamRow>
-        )}
-        {field("topN", "top-n")}
-      </ParamGroup>
-
-      <ParamGroup title="Links" subtitle="when two nodes are connected">
-        {LINKS_HELP[relation] && <p className="param-help">{LINKS_HELP[relation]}</p>}
-        {relation === "institution_keywords" && (
-          <>
-            {field("minShared", "min-shared")}
-            {field("maxKeywordPct", "max-df")}
-          </>
-        )}
-        {relation === "custom" && opts && (
-          <>
-            <ParamRow
-              id="custom-link"
-              label="Linked by"
-              help={
-                sameArticle
-                  ? "Two nodes are linked each time they appear on the same article; link weight = articles in common."
-                  : "The article field compared to decide whether two nodes are connected. Link weight = number of matching article pairs."
-              }
-            >
-              <select
-                id="custom-link"
-                className="select"
-                value={custom.link}
-                aria-describedby="custom-link-help"
-                onChange={(e) => chooseLink(e.target.value)}
-              >
-                {linksForEntity.map((o) => (
-                  <option key={o.key} value={o.key} disabled={!o.available}>
-                    {o.available ? o.label : `${o.label} (not in this data)`}
-                  </option>
-                ))}
-              </select>
-            </ParamRow>
-            {!sameArticle && (
+      {relation && expanded && (
+        <>
+          <ParamGroup title="Nodes" subtitle="what each dot is">
+            {relation === "custom" && opts && (
               <ParamRow
-                id="custom-model"
-                label="Model"
-                help={
-                  <>
-                    How two values of the field are compared. <span>{model?.description}</span>
-                  </>
-                }
+                id="custom-entity"
+                label="Nodes"
+                help="What each dot in the graph is. All of them that appear on the same article can be linked to each other."
               >
                 <select
-                  id="custom-model"
+                  id="custom-entity"
                   className="select"
-                  value={custom.model}
-                  aria-describedby="custom-model-help"
-                  onChange={(e) => chooseModel(e.target.value)}
+                  value={custom.entity}
+                  aria-describedby="custom-entity-help"
+                  onChange={(e) => chooseEntity(e.target.value)}
                 >
-                  {opts.models
-                    .filter((m) => link?.models.includes(m.key))
-                    .map((m) => (
-                      <option key={m.key} value={m.key}>
-                        {m.label}
-                      </option>
-                    ))}
+                  {opts.entities.map((o) => (
+                    <option key={o.key} value={o.key} disabled={!o.available}>
+                      {o.available ? o.label : `${o.label} (not in this data)`}
+                    </option>
+                  ))}
                 </select>
               </ParamRow>
             )}
-            {modelFields.map((name) => field(name, `custom-${name}`))}
-          </>
-        )}
-      </ParamGroup>
+            {field("topN", "top-n")}
+          </ParamGroup>
 
-      <details>
-        <summary>More options</summary>
-        <ParamGroup title="Articles" subtitle="filtered before anything is linked">
-          {field("maxAuthors", "max-authors")}
-        </ParamGroup>
-      </details>
+          <ParamGroup title="Links" subtitle="when two nodes are connected">
+            {LINKS_HELP[relation] && <p className="param-help">{LINKS_HELP[relation]}</p>}
+            {relation === "institution_keywords" && (
+              <>
+                {field("minShared", "min-shared")}
+                {field("maxKeywordPct", "max-df")}
+              </>
+            )}
+            {relation === "custom" && opts && (
+              <>
+                <ParamRow
+                  id="custom-link"
+                  label="Linked by"
+                  help={
+                    sameArticle
+                      ? "Two nodes are linked each time they appear on the same article; link weight = articles in common."
+                      : "The article field compared to decide whether two nodes are connected. Link weight = number of matching article pairs."
+                  }
+                >
+                  <select
+                    id="custom-link"
+                    className="select"
+                    value={custom.link}
+                    aria-describedby="custom-link-help"
+                    onChange={(e) => chooseLink(e.target.value)}
+                  >
+                    {linksForEntity.map((o) => (
+                      <option key={o.key} value={o.key} disabled={!o.available}>
+                        {o.available ? o.label : `${o.label} (not in this data)`}
+                      </option>
+                    ))}
+                  </select>
+                </ParamRow>
+                {!sameArticle && (
+                  <ParamRow
+                    id="custom-model"
+                    label="Model"
+                    help={
+                      <>
+                        How two values of the field are compared. <span>{model?.description}</span>
+                      </>
+                    }
+                  >
+                    <select
+                      id="custom-model"
+                      className="select"
+                      value={custom.model}
+                      aria-describedby="custom-model-help"
+                      onChange={(e) => chooseModel(e.target.value)}
+                    >
+                      {opts.models
+                        .filter((m) => link?.models.includes(m.key))
+                        .map((m) => (
+                          <option key={m.key} value={m.key}>
+                            {m.label}
+                          </option>
+                        ))}
+                    </select>
+                  </ParamRow>
+                )}
+                {modelFields.map((name) => field(name, `custom-${name}`))}
+              </>
+            )}
+          </ParamGroup>
 
-      <div>
-        <button type="submit" className="btn btn-primary" disabled={create.isPending || !canBuild}>
-          {create.isPending ? "Queuing…" : "Build network"}
-        </button>
-      </div>
-      {problems.length > 0 && (
-        <ul id="build-network-problems" className="error field-problems" role="alert">
-          {problems.map(([name, problem]) => (
-            <li key={name}>{problem}</li>
-          ))}
-        </ul>
+          <details
+            open={moreOpen}
+            onToggle={(e) => setMoreOpen((e.target as HTMLDetailsElement).open)}
+          >
+            <summary>More options</summary>
+            <ParamGroup title="Articles" subtitle="filtered before anything is linked">
+              {field("maxAuthors", "max-authors")}
+            </ParamGroup>
+          </details>
+
+          <div>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={create.isPending || !canBuild}
+            >
+              {create.isPending ? "Queuing…" : "Build network"}
+            </button>
+          </div>
+          {problems.length > 0 && (
+            <ul id="build-network-problems" className="error field-problems" role="alert">
+              {problems.map(([name, problem]) => (
+                <li key={name}>{problem}</li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
       {create.isError && <ErrorNote error={create.error} />}
     </form>

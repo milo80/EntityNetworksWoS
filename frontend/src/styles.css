@@ -766,6 +766,39 @@ details > summary {
   }
 }
 
+/* Title centered; the collapse chevron sits at the right without taking
+   height, so the title row stays compact. */
+.panel-head {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  /* About 30% less space between the title and the first row. */
+  margin-bottom: calc(var(--s1) * -0.5);
+}
+.panel-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ink);
+}
+.panel-collapse {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+}
+.panel-toggles {
+  display: flex;
+  gap: var(--s4);
+  margin-top: var(--s1);
+  font-size: var(--text-sm);
+}
+
 /* ---------- Data page: dataset list beside the profile ---------- */
 .page-wide {
   max-width: 1280px;

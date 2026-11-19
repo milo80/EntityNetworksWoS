@@ -84,7 +84,7 @@ export function DatasetPage() {
         <div className="section-head">
           <h2 id="networks-title">Networks</h2>
         </div>
-        <BuildNetworkForm datasetId={ds.id} />
+        <BuildNetworkForm key={ds.id} datasetId={ds.id} />
         {runs.isError && <ErrorNote error={runs.error} />}
         {runs.data?.length === 0 && (
           <p className="empty">No networks yet. Build one above to explore it.</p>

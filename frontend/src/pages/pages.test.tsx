@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 
 import { App } from "../App";
+import { clearFormState } from "../lib/buildFormState";
 import { SESSION, mockApi } from "../test/mockApi";
 import profile from "../test/synthetic_profile.json";
 
@@ -33,6 +34,7 @@ const DATASET = {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  clearFormState();
   document.cookie = "entitynet_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
 });
 
@@ -211,6 +213,7 @@ describe("datasets", () => {
     const user = renderApp("/datasets/7");
 
     const form = await screen.findByRole("form", { name: "Build network" });
+    await user.selectOptions(within(form).getByLabelText("Relationship"), "author");
     await user.click(within(form).getByText("More options"));
     const maxAuthors = within(form).getByLabelText("Ignore papers with more authors than");
     const build = within(form).getByRole("button", { name: "Build network" });
@@ -484,5 +487,104 @@ describe("navigation", () => {
     expect(screen.getByRole("main")).toContainElement(
       screen.getAllByRole("link", { name: "Datasets" }).find((a) => !nav().contains(a))!,
     );
+  });
+});
+
+describe("build network panel", () => {
+  const RUN = {
+    id: 5,
+    dataset_id: 7,
+    relation: "author",
+    params: { top_n: 700, max_authors: 15 },
+    status: "queued",
+    error: null,
+    node_count: null,
+    edge_count: null,
+    created_at: "2026-11-12T10:00:00Z",
+    started_at: null,
+    finished_at: null,
+  };
+
+  function mockDataset() {
+    const runs: unknown[] = [];
+    return mockApi({
+      "GET /auth/me": () => ({ body: SESSION }),
+      "GET /datasets": () => ({ body: [DATASET] }),
+      "GET /datasets/7": () => ({ body: DATASET }),
+      "GET /datasets/7/profile": () => ({ body: { status: "ready", error: null, profile } }),
+      "GET /runs?dataset_id=7": () => ({ body: runs }),
+      "POST /runs": () => {
+        runs.push(RUN);
+        return { status: 202, body: RUN };
+      },
+    });
+  }
+
+  it("starts collapsed and opens when a relationship is chosen", async () => {
+    mockDataset();
+    const user = renderApp("/datasets/7");
+
+    const form = await screen.findByRole("form", { name: "Build network" });
+    expect(within(form).getByRole("heading", { name: "Create network" })).toBeInTheDocument();
+    expect(within(form).getByLabelText("Relationship")).toHaveValue("");
+    expect(within(form).queryByLabelText("Maximum nodes")).toBeNull();
+    expect(within(form).queryByRole("button", { name: "Build network" })).toBeNull();
+
+    await user.selectOptions(within(form).getByLabelText("Relationship"), "author");
+    expect(within(form).getByLabelText("Maximum nodes")).toHaveValue(700);
+    expect(within(form).getByRole("button", { name: "Build network" })).toBeEnabled();
+
+    // Hide/Show folds the panel without losing the edits.
+    await user.clear(within(form).getByLabelText("Maximum nodes"));
+    await user.type(within(form).getByLabelText("Maximum nodes"), "250");
+    await user.click(within(form).getByRole("button", { name: "Hide settings" }));
+    expect(within(form).queryByLabelText("Maximum nodes")).toBeNull();
+    await user.click(within(form).getByRole("button", { name: "Show settings" }));
+    expect(within(form).getByLabelText("Maximum nodes")).toHaveValue(250);
+  });
+
+  it("keeps the panel as it was after visiting View data", async () => {
+    mockDataset();
+    const user = renderApp("/datasets/7");
+
+    let form = await screen.findByRole("form", { name: "Build network" });
+    await user.selectOptions(within(form).getByLabelText("Relationship"), "institution_keywords");
+    await user.clear(within(form).getByLabelText("Minimum shared keywords"));
+    await user.type(within(form).getByLabelText("Minimum shared keywords"), "5");
+    await user.click(within(form).getByText("More options"));
+
+    await user.click(within(screen.getByRole("main")).getByRole("link", { name: "View data" }));
+    expect(await screen.findByRole("heading", { name: "Data" })).toBeInTheDocument();
+    await user.click(
+      within(screen.getByRole("navigation", { name: "Main" })).getByRole("link", {
+        name: "Datasets",
+      }),
+    );
+    await user.click(await screen.findByRole("link", { name: "AI in medicine" }));
+
+    form = await screen.findByRole("form", { name: "Build network" });
+    expect(within(form).getByLabelText("Relationship")).toHaveValue("institution_keywords");
+    expect(within(form).getByLabelText("Minimum shared keywords")).toHaveValue(5);
+    expect(within(form).getByText("More options").closest("details")).toHaveAttribute("open");
+  });
+
+  it("folds after a build, keeping the settings, and Reset starts over", async () => {
+    mockDataset();
+    const user = renderApp("/datasets/7");
+
+    const form = await screen.findByRole("form", { name: "Build network" });
+    await user.selectOptions(within(form).getByLabelText("Relationship"), "author");
+    await user.clear(within(form).getByLabelText("Maximum nodes"));
+    await user.type(within(form).getByLabelText("Maximum nodes"), "400");
+    await user.click(within(form).getByRole("button", { name: "Build network" }));
+
+    expect(await screen.findByText("Queued")).toBeInTheDocument();
+    expect(within(form).queryByLabelText("Maximum nodes")).toBeNull();
+    await user.click(within(form).getByRole("button", { name: "Show settings" }));
+    expect(within(form).getByLabelText("Maximum nodes")).toHaveValue(400);
+
+    await user.click(within(form).getByRole("button", { name: "Reset" }));
+    expect(within(form).getByLabelText("Relationship")).toHaveValue("");
+    expect(within(form).queryByLabelText("Maximum nodes")).toBeNull();
   });
 });

@@ -54,11 +54,11 @@ test("upload, build and explore a network", async ({ page }, testInfo) => {
   await expect(overview.getByText("Articles", { exact: true })).toBeVisible({ timeout: 60_000 });
   await page.goBack();
 
-  // Build the default (co-authorship) network and wait for the worker.
-  await page
-    .getByRole("form", { name: "Build network" })
-    .getByRole("button", { name: "Build network" })
-    .click();
+  // Build a co-authorship network (the panel opens once a relationship is
+  // chosen) and wait for the worker.
+  const build = page.getByRole("form", { name: "Build network" });
+  await build.getByLabel("Relationship").selectOption("author");
+  await build.getByRole("button", { name: "Build network" }).click();
   await page.getByRole("link", { name: "Explore" }).click({ timeout: 60_000 });
 
   await expect(page.getByText(/^Laying out/)).toBeHidden({ timeout: 30_000 });
