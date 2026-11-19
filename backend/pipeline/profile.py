@@ -6,6 +6,7 @@ contains. Pure function (DataFrame -> JSON-safe dict); computed by the worker.
 
 from __future__ import annotations
 
+import logging
 import math
 from collections import Counter
 from typing import Any
@@ -13,14 +14,18 @@ from typing import Any
 import pandas as pd
 
 from .authors import prepare_author_lists
+from .custom import ENTITIES, LINKS, MODELS
 from .institutions import ARTICLE_ID, parse_reprint_address_block, pick_anchor_institution
 from .keywords import normalize_keyword, parse_keyword_columns
 
-PROFILE_VERSION = 1
+PROFILE_VERSION = 3
+"""Bump when the profile gains or changes content: the worker re-profiles older ones."""
 SAMPLE_ROWS = 10
 MAX_CELL_CHARS = 200
 TOP_N = 10
 MEGA_PAPER_AUTHORS = 15
+
+log = logging.getLogger(__name__)
 
 
 def _json_value(value: Any) -> Any:
@@ -93,6 +98,104 @@ def _describe(values: pd.Series) -> dict | None:
     }
 
 
+def _author_occurrences(authors: pd.Series) -> list[list[tuple[str, str]]]:
+    """Authors per article by name (case-insensitive, first-seen spelling). The
+    network's ORCID-based identity takes ~12 s on 3,000 articles; names take ~0.1 s."""
+    shown: dict[str, str] = {}
+    out = []
+    for names in authors:
+        row = []
+        for name in names:
+            name = name.strip()
+            if name:
+                key = name.lower()
+                row.append((key, shown.setdefault(key, name)))
+        out.append(row)
+    return out
+
+
+def _catalog(df: pd.DataFrame, authors: pd.Series | None) -> list[dict]:
+    """Top values of every node type a custom network can use (custom.ENTITIES),
+    counted in articles, so users can see what each would contain before building."""
+    entries = []
+    for key, spec in ENTITIES.items():
+        if spec.granularity == "article" or not all(c in df.columns for c in spec.columns):
+            continue
+        try:
+            if key == "author":
+                if authors is None:
+                    continue
+                per_article = _author_occurrences(authors)
+            else:
+                per_article = [[(o[0], o[1]) for o in occ] for occ in spec.extract(df)]
+        except Exception:
+            log.exception("Profile: node catalog entry %r failed", key)
+            continue
+        counter: Counter = Counter()
+        shown: dict[str, str] = {}
+        for row in per_article:
+            # Once per article, in first-seen order (a set would make tie order
+            # depend on the hash seed).
+            seen: set[str] = set()
+            for eid, name in row:
+                if eid not in seen:
+                    seen.add(eid)
+                    counter[eid] += 1
+                    shown.setdefault(eid, name)
+        entries.append(
+            {
+                "key": key,
+                "label": spec.label,
+                "granularity": spec.granularity,
+                "distinct": len(counter),
+                "articles_with_pct": _pct(sum(1 for row in per_article if row), len(df)),
+                "top": [
+                    {"value": shown[eid], "count": int(c)} for eid, c in counter.most_common(TOP_N)
+                ],
+            }
+        )
+    return entries
+
+
+def _link_catalog(df: pd.DataFrame) -> list[dict]:
+    """Every field a custom network can link by (custom.LINKS): how many articles
+    have it, and what it contains - top items for list fields (normalized as word
+    matching compares them), typical length for text fields."""
+    entries = []
+    for key, spec in LINKS.items():
+        if not all(c in df.columns for c in spec.columns if spec.kind != "list") or not any(
+            c in df.columns for c in spec.columns
+        ):
+            continue
+        entry: dict[str, Any] = {
+            "key": key,
+            "label": spec.label,
+            "kind": spec.kind,
+            "models": [MODELS[m] for m in spec.models] if spec.kind != "same_article" else [],
+        }
+        try:
+            values = spec.values(df)
+        except Exception:
+            log.exception("Profile: link catalog entry %r failed", key)
+            continue
+        entry["articles_with_pct"] = _pct(sum(1 for vs in values if vs), len(df))
+        if spec.kind == "list":
+            counter: Counter = Counter()
+            for vs in values:
+                counter.update(list(dict.fromkeys(n for v in vs if (n := normalize_keyword(v)))))
+            entry["distinct"] = len(counter)
+            # Same column as a node type: its values are that node card's, so no
+            # second top list.
+            same = [k for k, e in ENTITIES.items() if set(e.columns) == set(spec.columns)]
+            entry["same_as_node"] = same[0] if same else None
+            entry["top"] = [] if same else _counts(counter)
+        elif spec.kind == "string":
+            words = [len(vs[0].split()) for vs in values if vs]
+            entry["median_words"] = int(pd.Series(words).median()) if words else None
+        entries.append(entry)
+    return entries
+
+
 def profile_dataset(df: pd.DataFrame) -> dict:
     """Schema + sample + statistics for an article-level WoS dataframe."""
     stats: dict[str, Any] = {"articles": len(df), "columns": len(df.columns)}
@@ -115,6 +218,7 @@ def profile_dataset(df: pd.DataFrame) -> dict:
     if "Document Type" in df.columns:
         stats["document_types"] = _counts(Counter(_non_empty(df["Document Type"]).astype(str)))
 
+    authors = None
     if "Author Full Names" in df.columns:
         authors = prepare_author_lists(df)["autors_list"]
         per_article = authors.apply(len)
@@ -153,13 +257,10 @@ def profile_dataset(df: pd.DataFrame) -> dict:
             .apply(parse_reprint_address_block)
             .apply(pick_anchor_institution)
         )
-        countries = Counter(a["country"] for a in anchors if a and a.get("country"))
-        institutions = Counter(a["institution"] for a in anchors if a and a.get("institution"))
-        stats["corresponding_author"] = {
-            "resolved_pct": _pct(anchors.notna().sum(), len(df)),
-            "top_countries": _counts(countries),
-            "top_institutions": _counts(institutions),
-        }
+        stats["corresponding_author"] = {"resolved_pct": _pct(anchors.notna().sum(), len(df))}
+
+    stats["catalog"] = _catalog(df, authors)
+    stats["link_catalog"] = _link_catalog(df)
 
     sample = df.head(SAMPLE_ROWS)
     return {

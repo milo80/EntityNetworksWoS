@@ -203,6 +203,12 @@ def _articles(articles: pd.DataFrame) -> list[list[Occurrence]]:
     return out
 
 
+Granularity = Literal["fine", "coarse", "article"]
+"""fine: thousands of distinct values, links mostly weight 1 (a minimum link weight
+thins them); coarse: about a hundred values, links weigh hundreds; article: one node
+per article. Shown on the data page's node catalog (pipeline/profile.py)."""
+
+
 @dataclass(frozen=True)
 class EntitySpec:
     label: str
@@ -211,6 +217,7 @@ class EntitySpec:
     extract: Callable[[pd.DataFrame], list[list[Occurrence]]]
     team_attribute: str | None = None
     role: str = "links"
+    granularity: Granularity = "fine"
 
 
 ENTITIES: dict[str, EntitySpec] = {
@@ -240,6 +247,7 @@ ENTITIES: dict[str, EntitySpec] = {
         lambda a: _all_institutions(a, "country"),
         None,
         "linked countries",
+        granularity="coarse",
     ),
     "organization": EntitySpec(
         "Organization (Affiliations)",
@@ -267,6 +275,7 @@ ENTITIES: dict[str, EntitySpec] = {
         _list_entity("WoS Categories"),
         None,
         "linked categories",
+        granularity="coarse",
     ),
     "research_area": EntitySpec(
         "Research area",
@@ -275,9 +284,16 @@ ENTITIES: dict[str, EntitySpec] = {
         _list_entity("Research Areas"),
         None,
         "linked research areas",
+        granularity="coarse",
     ),
     "article": EntitySpec(
-        "Article", (ARTICLE_ID,), False, _articles, "document_type", "linked articles"
+        "Article",
+        (ARTICLE_ID,),
+        False,
+        _articles,
+        "document_type",
+        "linked articles",
+        granularity="article",
     ),
 }
 

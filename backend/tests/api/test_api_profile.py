@@ -1,6 +1,8 @@
 import pytest
 
+from app.models import Dataset
 from app.worker import profile_next_dataset, run_once
+from pipeline.profile import PROFILE_VERSION
 
 from ..fixtures.synthetic_wos import synthetic_wos_df
 from .conftest import register, upload
@@ -76,3 +78,39 @@ def test_network_options_are_private(make_client, client):
     other = make_client()
     register(other, "bob@example.org")
     assert other.get(f"/api/datasets/{ds['id']}/network-options").status_code == 404
+
+
+def test_outdated_profile_is_refreshed_in_place(client, db, settings, synthetic_reader):
+    ds = upload(client).json()
+    profile_next_dataset(db, settings)
+    row = db.get(Dataset, ds["id"])
+    row.profile = {"version": PROFILE_VERSION - 1, "stats": {"articles": 6}}
+    db.commit()
+
+    # Nothing pending: the worker refreshes the old profile, the dataset stays ready.
+    assert profile_next_dataset(db, settings) is True
+    r = client.get(f"/api/datasets/{ds['id']}/profile").json()
+    assert r["status"] == "ready"
+    assert r["profile"]["version"] == PROFILE_VERSION
+    assert any(e["key"] == "country" for e in r["profile"]["stats"]["catalog"])
+    assert profile_next_dataset(db, settings) is False  # up to date now
+
+
+def test_failed_refresh_keeps_the_old_profile_once(
+    client, db, settings, synthetic_reader, monkeypatch
+):
+    ds = upload(client).json()
+    profile_next_dataset(db, settings)
+    old = {"version": PROFILE_VERSION - 1, "stats": {"articles": 6}}
+    row = db.get(Dataset, ds["id"])
+    row.profile = old
+    db.commit()
+
+    def broken(files):
+        raise ValueError("boom")
+
+    monkeypatch.setattr("app.worker.read_wos_files", broken)
+    assert profile_next_dataset(db, settings) is True
+    r = client.get(f"/api/datasets/{ds['id']}/profile").json()
+    assert r["status"] == "ready" and r["profile"]["stats"] == old["stats"]
+    assert profile_next_dataset(db, settings) is False  # not retried every iteration

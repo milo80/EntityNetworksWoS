@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { Link, Navigate, useParams } from "react-router";
 
 import { api, type Dataset } from "../api/client";
+import { GROUP_PALETTE } from "../lib/colors";
 import { ErrorNote, Status, formatDate, formatNumber } from "../components/common";
 import { DATASETS_KEY } from "./DatasetsPage";
 
@@ -24,6 +25,25 @@ interface KeywordStats {
   unique: number;
   top: Count[];
 }
+interface CatalogEntry {
+  key: string;
+  label: string;
+  granularity: "fine" | "coarse";
+  distinct: number;
+  articles_with_pct: number;
+  top: Count[];
+}
+interface LinkEntry {
+  key: string;
+  label: string;
+  kind: "same_article" | "list" | "string";
+  models: string[];
+  articles_with_pct: number;
+  distinct?: number;
+  top?: Count[];
+  same_as_node?: string | null;
+  median_words?: number | null;
+}
 interface Profile {
   schema: ColumnInfo[];
   sample: { columns: string[]; rows: unknown[][] };
@@ -41,11 +61,9 @@ interface Profile {
     };
     articles_with_orcid_pct?: number;
     keywords?: Record<string, KeywordStats>;
-    corresponding_author?: {
-      resolved_pct: number;
-      top_countries: Count[];
-      top_institutions: Count[];
-    };
+    corresponding_author?: { resolved_pct: number };
+    catalog?: CatalogEntry[];
+    link_catalog?: LinkEntry[];
   };
 }
 
@@ -205,6 +223,10 @@ function ProfileView({ profile }: { profile: Profile }) {
         )}
       </section>
 
+      {!!stats.catalog?.length && (
+        <Catalog nodes={stats.catalog} links={stats.link_catalog ?? []} />
+      )}
+
       {years && years.per_year.length > 1 && (
         <section aria-labelledby="per-year">
           <h2 id="per-year">Articles per year</h2>
@@ -214,18 +236,15 @@ function ProfileView({ profile }: { profile: Profile }) {
 
       <div className="grid-2">
         {stats.document_types && <BarList title="Document types" items={stats.document_types} />}
-        {corr && <BarList title="Countries (corresponding author)" items={corr.top_countries} />}
-        {corr && (
-          <BarList title="Institutions (corresponding author)" items={corr.top_institutions} />
-        )}
-        {kw.author_keywords && (
+        {/* Older profiles without the link catalog: keyword lists here. */}
+        {!stats.link_catalog && kw.author_keywords && (
           <BarList
             title="Author keywords"
             note={`${formatNumber(kw.author_keywords.unique)} distinct · on ${kw.author_keywords.articles_with_pct}% of articles`}
             items={kw.author_keywords.top}
           />
         )}
-        {kw.keywords_plus && (
+        {!stats.link_catalog && kw.keywords_plus && (
           <BarList
             title="Keywords Plus"
             note={`${formatNumber(kw.keywords_plus.unique)} distinct · on ${kw.keywords_plus.articles_with_pct}% of articles`}
@@ -249,13 +268,167 @@ function Tile({ label, value }: { label: string; value: string }) {
   );
 }
 
-function BarList({ title, items, note }: { title: string; items: Count[]; note?: string }) {
+const GROUPS = {
+  fine: {
+    title: "Nodes · fine-grained",
+    short: "Fine-grained node",
+    color: GROUP_PALETTE[0],
+    help:
+      "Thousands of distinct values; most links between them have weight 1, so a " +
+      "minimum link weight of 2–3 thins the network a lot.",
+  },
+  coarse: {
+    title: "Nodes · coarse",
+    short: "Coarse node",
+    color: GROUP_PALETTE[1],
+    help:
+      "About a hundred values shared by many articles; links weigh hundreds, so expect " +
+      "a dense network and use the link weight filter in the Explorer.",
+  },
+  links: {
+    title: "Linked by",
+    short: "Link field",
+    color: GROUP_PALETTE[2],
+    help:
+      "The article field compared to decide whether two nodes are connected. List fields " +
+      "are matched item by item (word matching); text fields by similarity.",
+  },
+} as const;
+
+const barsId = (title: string) => `bars-${title.replace(/\W+/g, "-").toLowerCase()}`;
+
+function CatalogGroup({ group, children }: { group: keyof typeof GROUPS; children: ReactNode }) {
+  const { title, color, help } = GROUPS[group];
+  return (
+    <section
+      aria-labelledby={`catalog-${group}`}
+      className="catalog-group"
+      style={{ "--group-color": color } as CSSProperties}
+    >
+      <div className="catalog-group-head">
+        <h3 id={`catalog-${group}`}>
+          <span className="catalog-dot" aria-hidden="true" />
+          {title}
+        </h3>
+        <p className="small muted">{help}</p>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** What a custom network can be built from: every node type with its top values,
+ *  grouped by granularity, and every field that can link them - to choose what to
+ *  compare before building. */
+function Catalog({ nodes, links }: { nodes: CatalogEntry[]; links: LinkEntry[] }) {
+  const nodeLabel = new Map(nodes.map((n) => [n.key, n.label]));
+  const listCards = links.filter((l) => l.kind === "list" && !l.same_as_node);
+  const rows = links.filter((l) => !listCards.includes(l));
+  return (
+    <section aria-labelledby="catalog" className="catalog">
+      <div>
+        <h2 id="catalog">Catalog</h2>
+        <p className="small muted">
+          What a custom network can be built from: the nodes (what each dot is, with its top values
+          in articles) and the fields that link them. Use it to choose what to compare.
+        </p>
+      </div>
+      {(["fine", "coarse"] as const).map((g) => {
+        const group = nodes.filter((e) => e.granularity === g);
+        if (group.length === 0) return null;
+        return (
+          <CatalogGroup key={g} group={g}>
+            <div className="grid-2">
+              {group.map((e) => (
+                <BarList
+                  key={e.key}
+                  level={4}
+                  title={e.label}
+                  note={`${GROUPS[g].short} · ${formatNumber(e.distinct)} distinct · on ${e.articles_with_pct}% of articles`}
+                  items={e.top}
+                />
+              ))}
+            </div>
+          </CatalogGroup>
+        );
+      })}
+      {links.length > 0 && (
+        <CatalogGroup group="links">
+          {listCards.length > 0 && (
+            <div className="grid-2">
+              {listCards.map((l) => (
+                <BarList
+                  key={l.key}
+                  level={4}
+                  title={l.label}
+                  note={`${GROUPS.links.short} · ${formatNumber(l.distinct ?? 0)} distinct · on ${l.articles_with_pct}% of articles`}
+                  items={l.top ?? []}
+                />
+              ))}
+            </div>
+          )}
+          <div className="table-scroll">
+            <table className="table link-table" aria-label="Other link fields">
+              <thead>
+                <tr>
+                  <th scope="col">Field</th>
+                  <th scope="col">Compared with</th>
+                  <th scope="col" className="num">
+                    On articles
+                  </th>
+                  <th scope="col">Contains</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((l) => (
+                  <tr key={l.key}>
+                    <th scope="row">{l.label}</th>
+                    <td>{l.kind === "same_article" ? "Co-occurrence" : l.models.join(", ")}</td>
+                    <td className="num">{l.articles_with_pct}%</td>
+                    <td className="muted">
+                      {l.kind === "same_article" && "Links nodes that appear on the same article"}
+                      {l.kind === "list" && l.same_as_node && (
+                        <>
+                          {formatNumber(l.distinct ?? 0)} distinct · same values as{" "}
+                          <a href={`#${barsId(nodeLabel.get(l.same_as_node) ?? "")}`}>
+                            {nodeLabel.get(l.same_as_node) ?? l.same_as_node}
+                          </a>
+                        </>
+                      )}
+                      {l.kind === "string" &&
+                        (l.median_words != null
+                          ? `Text, typically ${formatNumber(l.median_words)} words`
+                          : "Text")}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CatalogGroup>
+      )}
+    </section>
+  );
+}
+
+function BarList({
+  title,
+  items,
+  note,
+  level = 2,
+}: {
+  title: string;
+  items: Count[];
+  note?: string;
+  level?: 2 | 4;
+}) {
   const max = Math.max(1, ...items.map((i) => i.count));
-  const id = `bars-${title.replace(/\W+/g, "-").toLowerCase()}`;
+  const id = barsId(title);
+  const Heading = level === 2 ? "h2" : "h4";
   return (
     <section aria-labelledby={id}>
       <div>
-        <h2 id={id}>{title}</h2>
+        <Heading id={id}>{title}</Heading>
         {note && <p className="small muted">{note}</p>}
       </div>
       {items.length === 0 ? (

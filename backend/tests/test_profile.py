@@ -26,8 +26,48 @@ def test_profile_of_synthetic_dataset():
     assert sorted(k["value"] for k in top_kw) == ["deep learning", "fetal ultrasound"]
     assert all(k["count"] == 3 for k in top_kw)
     assert stats["keywords"]["keywords_plus"]["articles_with_pct"] == 0.0
-    countries = {c["value"]: c["count"] for c in stats["corresponding_author"]["top_countries"]}
-    assert countries == {"Italy": 2, "USA": 1, "Peoples R China": 3}
+    assert stats["corresponding_author"] == {"resolved_pct": 100.0}
+
+    # Node catalog: every custom-network node type the columns allow (article
+    # excluded), counted once per article.
+    catalog = {e["key"]: e for e in stats["catalog"]}
+    assert list(catalog) == [
+        "author",
+        "institution",
+        "corresponding_institution",
+        "country",
+        "journal",
+    ]
+    assert catalog["country"]["granularity"] == "coarse"
+    assert {e["granularity"] for k, e in catalog.items() if k != "country"} == {"fine"}
+    assert {c["value"]: c["count"] for c in catalog["country"]["top"]} == {
+        "USA": 3,
+        "Peoples R China": 3,
+        "Italy": 2,
+    }
+    # "Hu, Zhixi" is listed twice on one article but counted once there.
+    assert catalog["author"]["distinct"] == 9 and catalog["author"]["articles_with_pct"] == 100.0
+    assert max(c["count"] for c in catalog["author"]["top"]) == 2
+    assert catalog["journal"]["top"] == [{"value": "Journal of Tests", "count": 6}]
+
+    # Link catalog: every field a custom network can link by.
+    links = {e["key"]: e for e in stats["link_catalog"]}
+    assert links["same_article"] == {
+        "key": "same_article",
+        "label": "Same article (co-occurrence)",
+        "kind": "same_article",
+        "models": [],
+        "articles_with_pct": 100.0,
+    }
+    kw = links["author_keywords"]
+    assert kw["kind"] == "list" and kw["same_as_node"] is None
+    assert {t["value"] for t in kw["top"][:2]} == {"deep learning", "fetal ultrasound"}
+    # A list field on a node type's column points to that node card instead.
+    assert links["authors"]["same_as_node"] == "author" and links["authors"]["top"] == []
+    assert links["authors"]["distinct"] == 9
+    assert links["article_title"]["kind"] == "string"
+    assert links["article_title"]["median_words"] == 3  # "Synthetic article WOS:1"
+    assert "keywords_plus" in links and links["keywords_plus"]["articles_with_pct"] == 0.0
 
     schema = {c["name"]: c for c in p["schema"]}
     assert schema["Publication Year"]["type"] == "number"
@@ -57,7 +97,7 @@ def test_profile_cells_are_json_safe_and_truncated():
 
 def test_profile_tolerates_missing_wos_columns():
     p = profile_dataset(pd.DataFrame({"Title": ["one", "two"]}))
-    assert p["stats"] == {"articles": 2, "columns": 1}
+    assert p["stats"] == {"articles": 2, "columns": 1, "catalog": [], "link_catalog": []}
     assert p["schema"][0]["distinct"] == 2
 
 
@@ -71,3 +111,10 @@ def test_frontend_profile_fixture_is_current():
     assert json.loads(fixture.read_text(encoding="utf-8")) == profile_dataset(synthetic_wos_df()), (
         "regenerate: see the command in frontend/src/test/mockApi.ts"
     )
+
+
+def test_catalog_skips_node_types_without_their_columns():
+    df = synthetic_wos_df().drop(columns=["Addresses"])
+    keys = [e["key"] for e in profile_dataset(df)["stats"]["catalog"]]
+    assert "institution" not in keys and "country" not in keys
+    assert "author" in keys and "journal" in keys

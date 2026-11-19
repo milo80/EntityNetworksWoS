@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 3,
   "schema": [
     {
       "name": "UT (Unique WOS ID)",
@@ -273,39 +273,285 @@
       }
     },
     "corresponding_author": {
-      "resolved_pct": 100.0,
-      "top_countries": [
-        {
-          "value": "Peoples R China",
-          "count": 3
-        },
-        {
-          "value": "Italy",
-          "count": 2
-        },
-        {
-          "value": "USA",
-          "count": 1
-        }
-      ],
-      "top_institutions": [
-        {
-          "value": "Univ Parma",
-          "count": 2
-        },
-        {
-          "value": "Fudan Univ",
-          "count": 2
-        },
-        {
-          "value": "Mayo Clin",
-          "count": 1
-        },
-        {
-          "value": "Peking Univ",
-          "count": 1
-        }
-      ]
-    }
+      "resolved_pct": 100.0
+    },
+    "catalog": [
+      {
+        "key": "author",
+        "label": "Author",
+        "granularity": "fine",
+        "distinct": 9,
+        "articles_with_pct": 100.0,
+        "top": [
+          {
+            "value": "Rossi, Anna",
+            "count": 2
+          },
+          {
+            "value": "Lee, Kim",
+            "count": 2
+          },
+          {
+            "value": "Smith, John",
+            "count": 2
+          },
+          {
+            "value": "Wang, Li",
+            "count": 2
+          },
+          {
+            "value": "Zhang, Wei",
+            "count": 2
+          },
+          {
+            "value": "Chen, Yu",
+            "count": 2
+          },
+          {
+            "value": "Bianchi, Marco",
+            "count": 1
+          },
+          {
+            "value": "Verdi, Luca",
+            "count": 1
+          },
+          {
+            "value": "Hu, Zhixi",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "key": "institution",
+        "label": "Institution (all authors)",
+        "granularity": "fine",
+        "distinct": 4,
+        "articles_with_pct": 100.0,
+        "top": [
+          {
+            "value": "Mayo Clin",
+            "count": 3
+          },
+          {
+            "value": "Univ Parma",
+            "count": 2
+          },
+          {
+            "value": "Peking Univ",
+            "count": 2
+          },
+          {
+            "value": "Fudan Univ",
+            "count": 2
+          }
+        ]
+      },
+      {
+        "key": "corresponding_institution",
+        "label": "Institution — department (corresponding author)",
+        "granularity": "fine",
+        "distinct": 4,
+        "articles_with_pct": 100.0,
+        "top": [
+          {
+            "value": "Univ Parma — Dept Med",
+            "count": 2
+          },
+          {
+            "value": "Fudan Univ",
+            "count": 2
+          },
+          {
+            "value": "Mayo Clin",
+            "count": 1
+          },
+          {
+            "value": "Peking Univ — Dept Cardiol",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "key": "country",
+        "label": "Country",
+        "granularity": "coarse",
+        "distinct": 3,
+        "articles_with_pct": 100.0,
+        "top": [
+          {
+            "value": "USA",
+            "count": 3
+          },
+          {
+            "value": "Peoples R China",
+            "count": 3
+          },
+          {
+            "value": "Italy",
+            "count": 2
+          }
+        ]
+      },
+      {
+        "key": "journal",
+        "label": "Journal",
+        "granularity": "fine",
+        "distinct": 1,
+        "articles_with_pct": 100.0,
+        "top": [
+          {
+            "value": "Journal of Tests",
+            "count": 6
+          }
+        ]
+      }
+    ],
+    "link_catalog": [
+      {
+        "key": "same_article",
+        "label": "Same article (co-occurrence)",
+        "kind": "same_article",
+        "models": [],
+        "articles_with_pct": 100.0
+      },
+      {
+        "key": "keywords",
+        "label": "Keywords (author keywords + Keywords Plus)",
+        "kind": "list",
+        "models": ["Word matching"],
+        "articles_with_pct": 100.0,
+        "distinct": 10,
+        "same_as_node": null,
+        "top": [
+          {
+            "value": "fetal ultrasound",
+            "count": 3
+          },
+          {
+            "value": "deep learning",
+            "count": 3
+          },
+          {
+            "value": "gynecology oncology",
+            "count": 2
+          },
+          {
+            "value": "heart failure",
+            "count": 2
+          },
+          {
+            "value": "bibliometric analysis",
+            "count": 2
+          },
+          {
+            "value": "citespace",
+            "count": 2
+          },
+          {
+            "value": "image segmentation",
+            "count": 1
+          },
+          {
+            "value": "large language models",
+            "count": 1
+          },
+          {
+            "value": "ethics",
+            "count": 1
+          },
+          {
+            "value": "medical education",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "key": "author_keywords",
+        "label": "Author keywords",
+        "kind": "list",
+        "models": ["Word matching"],
+        "articles_with_pct": 100.0,
+        "distinct": 10,
+        "same_as_node": null,
+        "top": [
+          {
+            "value": "fetal ultrasound",
+            "count": 3
+          },
+          {
+            "value": "deep learning",
+            "count": 3
+          },
+          {
+            "value": "gynecology oncology",
+            "count": 2
+          },
+          {
+            "value": "heart failure",
+            "count": 2
+          },
+          {
+            "value": "bibliometric analysis",
+            "count": 2
+          },
+          {
+            "value": "citespace",
+            "count": 2
+          },
+          {
+            "value": "image segmentation",
+            "count": 1
+          },
+          {
+            "value": "large language models",
+            "count": 1
+          },
+          {
+            "value": "ethics",
+            "count": 1
+          },
+          {
+            "value": "medical education",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "key": "keywords_plus",
+        "label": "Keywords Plus",
+        "kind": "list",
+        "models": ["Word matching"],
+        "articles_with_pct": 0.0,
+        "distinct": 0,
+        "same_as_node": null,
+        "top": []
+      },
+      {
+        "key": "authors",
+        "label": "Authors",
+        "kind": "list",
+        "models": ["Word matching"],
+        "articles_with_pct": 100.0,
+        "distinct": 9,
+        "same_as_node": "author",
+        "top": []
+      },
+      {
+        "key": "article_title",
+        "label": "Article title",
+        "kind": "string",
+        "models": ["String similarity: word overlap", "String similarity: characters"],
+        "articles_with_pct": 100.0,
+        "median_words": 3
+      },
+      {
+        "key": "journal",
+        "label": "Journal (Source Title)",
+        "kind": "string",
+        "models": ["String similarity: word overlap", "String similarity: characters"],
+        "articles_with_pct": 100.0,
+        "median_words": 3
+      }
+    ]
   }
 }

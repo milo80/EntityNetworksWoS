@@ -21,12 +21,12 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Connection, Engine, select, text, update
+from sqlalchemy import Connection, Engine, func, or_, select, text, update
 from sqlalchemy.orm import Session
 
 from pipeline.custom import NetworkBuildError
 from pipeline.io import WoSReadError, read_wos_files
-from pipeline.profile import profile_dataset
+from pipeline.profile import PROFILE_VERSION, profile_dataset
 
 from .config import Settings, get_settings
 from .db import get_sessionmaker, utcnow
@@ -126,7 +126,7 @@ def profile_next_dataset(db: Session, settings: Settings) -> bool:
     ).first()
     if dataset is None:
         db.rollback()
-        return False
+        return refresh_outdated_profile(db, settings)
     files = dataset_file_paths(dataset, settings)
     try:
         if not files:
@@ -172,6 +172,45 @@ def execute_run(db: Session, run: NetworkRun, settings: Settings) -> None:
     )
     db.commit()
     log.info("Run %d: %s", run.id, values["status"])
+
+
+def _profile_version(field: str):
+    return func.coalesce(Dataset.profile[field].as_integer(), 0)
+
+
+def refresh_outdated_profile(db: Session, settings: Settings) -> bool:
+    """Recompute one 'ready' profile older than PROFILE_VERSION, in place.
+
+    The dataset stays 'ready' and keeps its old profile until the new one is
+    stored, so existing datasets gain new profile content without a migration.
+    A failure keeps the old profile and is remembered (refresh_failed_version),
+    so it isn't retried every iteration.
+    """
+    dataset = db.scalars(
+        select(Dataset)
+        .where(
+            Dataset.profile_status == "ready",
+            _profile_version("version") < PROFILE_VERSION,
+            or_(
+                Dataset.profile["refresh_failed_version"].is_(None),
+                _profile_version("refresh_failed_version") < PROFILE_VERSION,
+            ),
+        )
+        .order_by(Dataset.id)
+        .limit(1)
+        .with_for_update(skip_locked=True)
+    ).first()
+    if dataset is None:
+        db.rollback()
+        return False
+    try:
+        dataset.profile = profile_dataset(read_wos_files(dataset_file_paths(dataset, settings)))
+        log.info("Dataset %d profile refreshed to version %d", dataset.id, PROFILE_VERSION)
+    except Exception:
+        log.exception("Refreshing the profile of dataset %d failed", dataset.id)
+        dataset.profile = {**(dataset.profile or {}), "refresh_failed_version": PROFILE_VERSION}
+    db.commit()
+    return True
 
 
 def run_once(db: Session, settings: Settings) -> bool:

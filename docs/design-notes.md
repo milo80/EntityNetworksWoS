@@ -341,6 +341,26 @@ Dataset profile: computed by the worker right after upload (pipeline/profile.py)
 served by GET /api/datasets/{id}/profile; the API still never parses uploads.
 Fixed a hash-seed-dependent ordering of tied keyword counts (set iteration)
 found by the fixture-consistency test.
+Node catalog (profile version 2): for every custom-network node type the
+columns allow (custom.ENTITIES, article excluded), the number of distinct
+values, the share of articles with one, and the top 10 values counted in
+articles. The data page groups them by EntitySpec.granularity: fine-grained
+(author, institutions, organization, journal, funder: thousands of values,
+links mostly weight 1) and coarse (country, WoS category, research area: about
+a hundred values, links weigh hundreds), so users can choose what to compare
+before building. Authors are counted by name: the network's ORCID identity
+takes ~12 s on 3,000 articles, names ~0.1 s (whole profile ~0.5 s). It replaces
+the corresponding-author country and institution lists. Profile version 3 adds
+the link catalog (custom.LINKS): share of articles with each field; for list
+fields the distinct items (normalized as word matching compares them) and,
+unless the field is a node type's own column (then the page points to that
+node card), the top 10; for text fields the median word count. The data page
+shows both as one Catalog: Nodes fine-grained, Nodes coarse and Linked by
+(the keyword lists moved there). When the worker has
+nothing pending it recomputes one 'ready' profile older than PROFILE_VERSION
+in place (the old one stays visible meanwhile; a failure is remembered in
+refresh_failed_version and not retried), so existing datasets update without
+a migration.
 
 Bundling: the Explorer (Cytoscape, ~146 KB gzip) is lazy-loaded; the rest of the
 app is ~100 KB gzip.

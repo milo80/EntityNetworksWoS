@@ -392,8 +392,46 @@ describe("datasets", () => {
     expect(within(overview).getByText("6")).toBeInTheDocument();
     expect(within(overview).getByText("2025")).toBeInTheDocument();
 
-    const countries = screen.getByRole("region", { name: "Countries (corresponding author)" });
-    expect(within(countries).getByText("Peoples R China")).toBeInTheDocument();
+    // Catalog: node types grouped by granularity with their top values, and the
+    // fields that can link them.
+    const catalog = screen.getByRole("region", { name: "Catalog" });
+    const fine = within(catalog).getByRole("region", { name: "Nodes · fine-grained" });
+    const coarse = within(catalog).getByRole("region", { name: "Nodes · coarse" });
+    expect(within(fine).getByRole("region", { name: "Author" })).toBeInTheDocument();
+    expect(within(fine).getByRole("region", { name: "Journal" })).toHaveTextContent(
+      "Journal of Tests",
+    );
+    const country = within(coarse).getByRole("region", { name: "Country" });
+    expect(country).toHaveTextContent("Coarse node · 3 distinct · on 100% of articles");
+    expect(within(country).getByText("Peoples R China")).toBeInTheDocument();
+    expect(within(fine).queryByRole("region", { name: "Country" })).toBeNull();
+
+    const linkedBy = within(catalog).getByRole("region", { name: "Linked by" });
+    expect(within(linkedBy).getByRole("region", { name: "Author keywords" })).toHaveTextContent(
+      "fetal ultrasound",
+    );
+    const others = within(linkedBy).getByRole("table", { name: "Other link fields" });
+    const authorsRow = within(others).getByRole("row", { name: /^Authors/ });
+    expect(authorsRow).toHaveTextContent("same values as Author");
+    expect(within(authorsRow).getByRole("link", { name: "Author" })).toHaveAttribute(
+      "href",
+      "#bars-author",
+    );
+    expect(within(others).getByRole("row", { name: /^Article title/ })).toHaveTextContent(
+      "Text, typically 3 words",
+    );
+    expect(within(others).getByRole("row", { name: /^Same article/ })).toHaveTextContent(
+      "Co-occurrence",
+    );
+    // The keyword lists moved into Linked by: not repeated below.
+    expect(screen.getAllByRole("region", { name: "Author keywords" })).toHaveLength(1);
+    // Replaced by the catalog.
+    for (const name of [
+      "Countries (corresponding author)",
+      "Institutions (corresponding author)",
+    ]) {
+      expect(screen.queryByRole("region", { name })).toBeNull();
+    }
 
     const sample = screen.getByRole("region", { name: "Sample" });
     expect(within(sample).getAllByRole("columnheader")).toHaveLength(7);
