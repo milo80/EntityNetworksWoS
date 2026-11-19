@@ -23,8 +23,7 @@ type FieldName =
   | "minItems"
   | "maxItemPct"
   | "similarityPct"
-  | "maxWordPct"
-  | "minWeight";
+  | "maxWordPct";
 
 const FIELDS: Record<FieldName, { label: string; min: number; max: number; hint?: string }> = {
   topN: { label: "Maximum nodes", min: 10, max: 2000 },
@@ -39,12 +38,6 @@ const FIELDS: Record<FieldName, { label: string; min: number; max: number; hint?
     hint: "Items most articles have don’t indicate a real link.",
   },
   similarityPct: { label: "Minimum similarity (%)", min: 5, max: 100 },
-  minWeight: {
-    label: "Minimum link weight",
-    min: 1,
-    max: 1000,
-    hint: "Keep links backed by at least this many matching article pairs.",
-  },
   maxWordPct: {
     label: "Ignore words used by more than (%)",
     min: 1,
@@ -60,11 +53,11 @@ function fieldsFor(relation: Relation, kind: LinkKind | undefined, model: string
   if (relation === "institution_keywords") {
     return ["topN", "maxAuthors", "minShared", "maxKeywordPct"];
   }
-  if (kind === "same_article") return ["topN", "maxAuthors", "minWeight"];
+  if (kind === "same_article") return ["topN", "maxAuthors"];
   if (model === "word_matching") {
-    return ["topN", "maxAuthors", "minItems", "maxItemPct", "minWeight"];
+    return ["topN", "maxAuthors", "minItems", "maxItemPct"];
   }
-  return ["topN", "maxAuthors", "similarityPct", "maxWordPct", "minWeight"];
+  return ["topN", "maxAuthors", "similarityPct", "maxWordPct"];
 }
 
 /** The problem with a field's text, or null when it is a whole number within its limits. */
@@ -94,7 +87,6 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
     maxItemPct: "5",
     similarityPct: "50",
     maxWordPct: "5",
-    minWeight: "1",
   });
   const [custom, setCustom] = useState({
     entity: "institution",
@@ -143,7 +135,6 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
         next.maxItemPct = percent(d.max_item_df);
         next.similarityPct = percent(d.threshold);
         next.maxWordPct = percent(d.max_word_df);
-        next.minWeight = String(d.min_weight);
       }
       return next;
     });
@@ -230,7 +221,6 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
           max_item_df: n("maxItemPct") / 100,
           threshold: n("similarityPct") / 100,
           max_word_df: n("maxWordPct") / 100,
-          min_weight: n("minWeight"),
         },
       };
     }

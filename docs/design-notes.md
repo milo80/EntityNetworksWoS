@@ -434,6 +434,9 @@ drops weak links before sampling. It defaults to 1 because Article nodes only
 ever have weight-1 links; for authors and institutions 87-99% of links have
 weight 1, so 2 thins them a lot. For coarse entities (countries, categories)
 weights run into the hundreds and even 10 leaves a near-complete graph.
+The Build network form doesn't show this option, because at 1 it drops nothing
+and the Explorer's link weight range filters links on screen. It remains an API
+parameter (`min_weight`).
 
 Limits: a run that would match more than 2,000,000 article pairs (or score more
 than 5,000,000 value pairs) fails with a message asking for a stricter setting,

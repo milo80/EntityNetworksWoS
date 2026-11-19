@@ -52,6 +52,9 @@ Run from the repository root, in the toolbox (it needs `backend/.venv`).
 - **Weight** of a link = number of matched article pairs behind it. Most
   links in dense combinations have weight 1 (`share_weight_1`), which is why a
   minimum link weight of 2-3 cleans up keyword and category networks.
+  The Build network form doesn't show this option (it is always 1 there), so
+  suggest it as the API's `min_weight` or as a starting point for the
+  Explorer's link weight range.
 - **Word matching**: `min_shared` (items two articles must share) and
   `max_item_df` (ignore items in more than this share of articles). Lower
   `max_item_df` removes generic items like "artificial intelligence" in an AI

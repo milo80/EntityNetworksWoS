@@ -341,10 +341,8 @@ describe("datasets", () => {
     expect(within(form).getByLabelText("Minimum similarity (%)")).toHaveValue(85);
     expect(within(form).getByText("Spelled alike.")).toBeInTheDocument();
 
-    const minWeight = within(form).getByLabelText("Minimum link weight");
-    expect(minWeight).toHaveValue(1);
-    await user.clear(minWeight);
-    await user.type(minWeight, "3");
+    // The minimum link weight stays at the API default (1, drops nothing).
+    expect(within(form).queryByLabelText("Minimum link weight")).toBeNull();
 
     await user.click(within(form).getByRole("button", { name: "Build network" }));
     const post = calls.find((c) => c.method === "POST" && c.path === "/runs")!;
@@ -361,7 +359,6 @@ describe("datasets", () => {
         max_item_df: 0.12,
         threshold: 0.85,
         max_word_df: 0.05,
-        min_weight: 3,
       },
     });
     // The new run is listed with labels from the options.
