@@ -3,7 +3,7 @@ import { Navigate, Route, Routes } from "react-router";
 
 import { RequireAuth } from "./auth/session";
 import { Layout } from "./components/Layout";
-import { DatasetDataPage } from "./pages/DatasetDataPage";
+import { DataIndexPage, DatasetDataPage } from "./pages/DatasetDataPage";
 import { DatasetPage } from "./pages/DatasetPage";
 import { DatasetsPage } from "./pages/DatasetsPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -37,6 +37,7 @@ export function App() {
         <Route path="/datasets" element={<DatasetsPage />} />
         <Route path="/datasets/:datasetId" element={<DatasetPage />} />
         <Route path="/datasets/:datasetId/data" element={<DatasetDataPage />} />
+        <Route path="/data" element={<DataIndexPage />} />
         <Route
           path="/runs/:runId"
           element={

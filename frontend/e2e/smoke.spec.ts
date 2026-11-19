@@ -49,7 +49,7 @@ test("upload, build and explore a network", async ({ page }, testInfo) => {
   await expect(page.getByRole("heading", { name })).toBeVisible();
 
   // Data page: the worker profiles the upload.
-  await page.getByRole("link", { name: "View data" }).click();
+  await page.getByRole("main").getByRole("link", { name: "View data" }).click();
   const overview = page.getByRole("region", { name: "Overview" });
   await expect(overview.getByText("Articles", { exact: true })).toBeVisible({ timeout: 60_000 });
   await page.goBack();

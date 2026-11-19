@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, Navigate, useParams } from "react-router";
 
-import { api } from "../api/client";
-import { ErrorNote, Status, formatNumber } from "../components/common";
+import { api, type Dataset } from "../api/client";
+import { ErrorNote, Status, formatDate, formatNumber } from "../components/common";
+import { DATASETS_KEY } from "./DatasetsPage";
 
 // Shape of pipeline/profile.py's output (served as a free-form object).
 interface Count {
@@ -71,32 +72,92 @@ export function DatasetDataPage() {
   });
 
   return (
-    <div className="page">
-      <div className="page-header">
-        <div>
-          <Link to={`/datasets/${datasetId}`} className="back">
-            ← {dataset.data?.name ?? "Dataset"}
-          </Link>
-          <h1>Data</h1>
-          <p className="sub">What the uploaded files contain, before you build a network.</p>
+    <div className="page page-wide data-layout">
+      <DatasetList currentId={datasetId} />
+      <div className="data-content">
+        <div className="page-header">
+          <div>
+            <Link to={`/datasets/${datasetId}`} className="back">
+              ← {dataset.data?.name ?? "Dataset"}
+            </Link>
+            <h1>Data</h1>
+            <p className="sub">What the uploaded files contain, before you build a network.</p>
+          </div>
         </div>
+        {profile.isPending && <p className="empty">Loading…</p>}
+        {profile.isError && <ErrorNote error={profile.error} />}
+        {profile.data?.status === "pending" && (
+          <p className="empty">
+            <Status status="pending" /> — this takes a few seconds after upload.
+          </p>
+        )}
+        {profile.data?.status === "failed" && (
+          <p className="error" role="alert">
+            The files could not be analysed: {profile.data.error}
+          </p>
+        )}
+        {profile.data?.status === "ready" && profile.data.profile && (
+          <ProfileView profile={profile.data.profile as unknown as Profile} />
+        )}
       </div>
-      {profile.isPending && <p className="empty">Loading…</p>}
-      {profile.isError && <ErrorNote error={profile.error} />}
-      {profile.data?.status === "pending" && (
-        <p className="empty">
-          <Status status="pending" /> — this takes a few seconds after upload.
-        </p>
-      )}
-      {profile.data?.status === "failed" && (
-        <p className="error" role="alert">
-          The files could not be analysed: {profile.data.error}
-        </p>
-      )}
-      {profile.data?.status === "ready" && profile.data.profile && (
-        <ProfileView profile={profile.data.profile as unknown as Profile} />
-      )}
     </div>
+  );
+}
+
+const useDatasets = () => useQuery({ queryKey: DATASETS_KEY, queryFn: api.listDatasets });
+
+const newestFirst = (a: Dataset, b: Dataset) => b.created_at.localeCompare(a.created_at);
+
+/** "View data" without a dataset: open the newest one's data page. */
+export function DataIndexPage() {
+  const datasets = useDatasets();
+  if (datasets.isPending) return <p className="empty">Loading…</p>;
+  if (datasets.isError) {
+    return (
+      <div className="page">
+        <ErrorNote error={datasets.error} />
+      </div>
+    );
+  }
+  const newest = [...datasets.data].sort(newestFirst)[0];
+  if (newest) return <Navigate to={`/datasets/${newest.id}/data`} replace />;
+  return (
+    <div className="page">
+      <h1>Data</h1>
+      <p className="empty">
+        No datasets yet. Upload one in <Link to="/datasets">Datasets</Link>.
+      </p>
+    </div>
+  );
+}
+
+/** Every loaded dataset, to switch the data page between them. */
+function DatasetList({ currentId }: { currentId: number }) {
+  const datasets = useDatasets();
+  return (
+    <nav className="dataset-list" aria-label="Datasets">
+      <h2 className="dataset-list-title">Datasets</h2>
+      {datasets.isError && <ErrorNote error={datasets.error} />}
+      <ul>
+        {[...(datasets.data ?? [])].sort(newestFirst).map((d) => (
+          <li key={d.id}>
+            <Link
+              to={`/datasets/${d.id}/data`}
+              aria-current={d.id === currentId ? "page" : undefined}
+            >
+              <span className="dataset-list-name">{d.name}</span>
+              <span className="dataset-list-date">
+                {d.profile_status === "ready" ? (
+                  formatDate(d.created_at)
+                ) : (
+                  <Status status={d.profile_status} />
+                )}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
   );
 }
 

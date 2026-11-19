@@ -378,6 +378,7 @@ describe("datasets", () => {
   it("shows the data page from a real pipeline profile", async () => {
     mockApi({
       "GET /auth/me": () => ({ body: SESSION }),
+      "GET /datasets": () => ({ body: [DATASET] }),
       "GET /datasets/7": () => ({ body: DATASET }),
       "GET /datasets/7/profile": () => ({ body: { status: "ready", error: null, profile } }),
     });
@@ -396,5 +397,92 @@ describe("datasets", () => {
     await user.click(within(sample).getByRole("button", { name: /Show all 11 columns/ }));
     expect(within(sample).getAllByRole("columnheader")).toHaveLength(11);
     expect(within(sample).getAllByRole("row")).toHaveLength(1 + 6);
+  });
+});
+
+describe("navigation", () => {
+  const OLDER = { ...DATASET, id: 3, name: "Older export", created_at: "2026-10-01T10:00:00Z" };
+  const PENDING = {
+    ...DATASET,
+    id: 9,
+    name: "Still analysing",
+    created_at: "2026-11-01T10:00:00Z",
+    profile_status: "pending",
+  };
+  const nav = () => screen.getByRole("navigation", { name: "Main" });
+
+  it("shows the title as plain text and marks the Datasets tab", async () => {
+    mockApi({
+      "GET /auth/me": () => ({ body: SESSION }),
+      "GET /datasets": () => ({ body: [DATASET] }),
+    });
+    renderApp("/datasets");
+
+    expect(await screen.findByRole("heading", { name: "Datasets" })).toBeInTheDocument();
+    expect(screen.getByText("EntityNetworks")).not.toHaveAttribute("href");
+    expect(screen.queryByRole("link", { name: "EntityNetworks" })).toBeNull();
+    expect(within(nav()).getByRole("link", { name: "Datasets" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    // No dataset in the URL: View data opens the newest dataset (via /data).
+    expect(within(nav()).getByRole("link", { name: "View data" })).toHaveAttribute("href", "/data");
+  });
+
+  it("/data opens the newest dataset, listing all of them", async () => {
+    mockApi({
+      "GET /auth/me": () => ({ body: SESSION }),
+      "GET /datasets": () => ({ body: [OLDER, DATASET, PENDING] }),
+      "GET /datasets/7": () => ({ body: DATASET }),
+      "GET /datasets/7/profile": () => ({ body: { status: "ready", error: null, profile } }),
+      "GET /datasets/3": () => ({ body: OLDER }),
+      "GET /datasets/3/profile": () => ({ body: { status: "ready", error: null, profile } }),
+    });
+    const user = renderApp("/data");
+
+    const list = await screen.findByRole("navigation", { name: "Datasets" });
+    await within(list).findByRole("link", { name: /AI in medicine/ });
+    expect(
+      within(list)
+        .getAllByRole("link")
+        .map((a) => a.textContent),
+    ).toEqual([
+      expect.stringContaining("AI in medicine"),
+      expect.stringContaining("Still analysing"),
+      expect.stringContaining("Older export"),
+    ]);
+    expect(within(list).getByRole("link", { name: /AI in medicine/ })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(within(list).getByRole("link", { name: /Still analysing/ })).toHaveTextContent(
+      /Analys/i,
+    );
+    const viewData = within(nav()).getByRole("link", { name: "View data" });
+    expect(viewData).toHaveAttribute("aria-current", "page");
+    expect(viewData).toHaveAttribute("href", "/datasets/7/data");
+    expect(within(nav()).getByRole("link", { name: "Datasets" })).not.toHaveAttribute(
+      "aria-current",
+    );
+
+    await user.click(within(list).getByRole("link", { name: /Older export/ }));
+    expect(await screen.findByRole("link", { name: "← Older export" })).toBeInTheDocument();
+    expect(within(list).getByRole("link", { name: /Older export/ })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  it("/data without datasets points to the upload", async () => {
+    mockApi({
+      "GET /auth/me": () => ({ body: SESSION }),
+      "GET /datasets": () => ({ body: [] }),
+    });
+    renderApp("/data");
+
+    expect(await screen.findByText(/No datasets yet/)).toBeInTheDocument();
+    expect(screen.getByRole("main")).toContainElement(
+      screen.getAllByRole("link", { name: "Datasets" }).find((a) => !nav().contains(a))!,
+    );
   });
 });
