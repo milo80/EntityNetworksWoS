@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, type ChangeEvent, type FormEvent } from "react";
+import { useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 
 import { api, type NetworkOptions, type Relation, type RunCreate } from "../api/client";
 import { ErrorNote } from "../components/common";
@@ -25,25 +25,86 @@ type FieldName =
   | "similarityPct"
   | "maxWordPct";
 
-const FIELDS: Record<FieldName, { label: string; min: number; max: number; hint?: string }> = {
-  topN: { label: "Maximum nodes", min: 10, max: 2000 },
-  maxAuthors: { label: "Ignore papers with more authors than", min: 2, max: 200 },
-  minShared: { label: "Minimum shared keywords", min: 1, max: 50 },
-  maxKeywordPct: { label: "Ignore keywords used by more than (%)", min: 1, max: 100 },
-  minItems: { label: "Minimum shared items", min: 1, max: 50 },
+const FIELDS: Record<FieldName, { label: string; min: number; max: number; help: string }> = {
+  topN: {
+    label: "Maximum nodes",
+    min: 10,
+    max: 2000,
+    help:
+      "Keeps at most this many nodes: the largest connected groups first, then the most " +
+      "connected nodes in each. It doesn’t change how links are found, only how much of the " +
+      "network is shown. More nodes take longer to lay out and to read.",
+  },
+  maxAuthors: {
+    label: "Ignore papers with more authors than",
+    min: 2,
+    max: 200,
+    help:
+      "Papers with more authors are dropped before anything is linked, for every relationship. " +
+      "Everyone on a paper (authors, institutions, countries) is linked to everyone else, so " +
+      "n authors make n×(n−1)/2 pairs: 15 make 105, 100 make 4,950. In a 3,000-article WoS " +
+      "sample, the 3.6% of papers above 15 authors produced 58% of all co-author pairs, so a few " +
+      "consortium papers decided which nodes looked most connected. Raise it to include large " +
+      "collaborations.",
+  },
+  minShared: {
+    label: "Minimum shared keywords",
+    min: 1,
+    max: 50,
+    help:
+      "Two institutions are linked when their articles share at least this many keywords. " +
+      "Higher values give fewer, stronger links.",
+  },
+  maxKeywordPct: {
+    label: "Ignore keywords used by more than (%)",
+    min: 1,
+    max: 100,
+    help:
+      "Keywords found in more than this share of articles are left out of matching: very " +
+      "common keywords don’t indicate a real overlap. Lower is stricter.",
+  },
+  minItems: {
+    label: "Minimum shared items",
+    min: 1,
+    max: 50,
+    help:
+      "Two articles match when they share at least this many items of the field. Higher " +
+      "values give fewer, stronger links.",
+  },
   maxItemPct: {
     label: "Ignore items used by more than (%)",
     min: 1,
     max: 100,
-    hint: "Items most articles have don’t indicate a real link.",
+    help:
+      "Items found in more than this share of articles are left out of matching (for example " +
+      "“artificial intelligence” in an AI dataset): items most articles have don’t indicate a " +
+      "real link. Lower is stricter.",
   },
-  similarityPct: { label: "Minimum similarity (%)", min: 5, max: 100 },
+  similarityPct: {
+    label: "Minimum similarity (%)",
+    min: 5,
+    max: 100,
+    help: "How alike two texts must be to match. Higher values give fewer, closer matches.",
+  },
   maxWordPct: {
     label: "Ignore words used by more than (%)",
     min: 1,
     max: 100,
-    hint: "Only texts that share a less common word are compared.",
+    help:
+      "Only texts that share a word rarer than this are compared, which keeps the run fast and " +
+      "skips matches on generic words. Lower is faster and stricter.",
   },
+};
+
+const RELATION_HELP: Record<Relation, string> = {
+  author: "Authors, linked when they wrote a paper together.",
+  institution_keywords: "Institutions, linked when their articles share keywords.",
+  custom: "Choose what the nodes are and which article field links them.",
+};
+
+const LINKS_HELP: Partial<Record<Relation, string>> = {
+  author:
+    "Two authors are linked for each paper they wrote together; link weight = papers in common.",
 };
 
 type LinkKind = NetworkOptions["links"][number]["kind"];
@@ -166,25 +227,29 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
     }
   };
 
-  const inputProps = (name: FieldName) => ({
-    className: "input",
+  const describedBy = (id: string, name?: FieldName) =>
+    [`${id}-help`, name && invalid(name) ? "build-network-problems" : null]
+      .filter(Boolean)
+      .join(" ");
+
+  const inputProps = (name: FieldName, id: string) => ({
+    id,
+    className: "input input-num",
     type: "number",
     min: FIELDS[name].min,
     max: FIELDS[name].max,
     value: values[name],
     "aria-invalid": invalid(name) || undefined,
-    "aria-describedby": invalid(name) ? "build-network-problems" : undefined,
+    "aria-describedby": describedBy(id, name),
     onChange: (e: ChangeEvent<HTMLInputElement>) =>
       setValues((v) => ({ ...v, [name]: e.target.value })),
     onBlur: () => setTouched((t) => new Set(t).add(name)),
   });
 
   const field = (name: FieldName, id: string) => (
-    <div className="field" key={name}>
-      <label htmlFor={id}>{FIELDS[name].label}</label>
-      <input id={id} {...inputProps(name)} />
-      {FIELDS[name].hint && <span className="hint">{FIELDS[name].hint}</span>}
-    </div>
+    <ParamRow key={name} id={id} label={FIELDS[name].label} help={FIELDS[name].help}>
+      <input {...inputProps(name, id)} />
+    </ParamRow>
   );
 
   const onSubmit = (e: FormEvent) => {
@@ -228,56 +293,73 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
   };
 
   const modelFields = active.filter((f) => f !== "topN" && f !== "maxAuthors");
+  const sameArticle = link?.kind === "same_article";
 
   return (
     <form className="panel-form" onSubmit={onSubmit} aria-label="Build network" noValidate>
-      <div className="form-row">
-        <div className="field">
-          <label htmlFor="relation">Relationship</label>
-          <select
-            id="relation"
-            className="select"
-            value={relation}
-            onChange={(e) => chooseRelation(e.target.value as Relation)}
-          >
-            <option value="author">{RELATION_LABEL.author}</option>
-            <option value="institution_keywords">{RELATION_LABEL.institution_keywords}</option>
-            <option value="custom">Custom…</option>
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="top-n">Maximum nodes</label>
-          <input id="top-n" required {...inputProps("topN")} />
-        </div>
-        <button type="submit" className="btn btn-primary" disabled={create.isPending || !canBuild}>
-          {create.isPending ? "Queuing…" : "Build network"}
-        </button>
-      </div>
+      <ParamRow id="relation" label="Relationship" help={RELATION_HELP[relation]}>
+        <select
+          id="relation"
+          className="select"
+          value={relation}
+          aria-describedby="relation-help"
+          onChange={(e) => chooseRelation(e.target.value as Relation)}
+        >
+          <option value="author">{RELATION_LABEL.author}</option>
+          <option value="institution_keywords">{RELATION_LABEL.institution_keywords}</option>
+          <option value="custom">Custom…</option>
+        </select>
+      </ParamRow>
 
-      {relation === "custom" && opts && (
-        <>
-          <div className="form-row custom-choice">
-            <div className="field">
-              <label htmlFor="custom-entity">Nodes</label>
-              <select
-                id="custom-entity"
-                className="select"
-                value={custom.entity}
-                onChange={(e) => chooseEntity(e.target.value)}
-              >
-                {opts.entities.map((o) => (
-                  <option key={o.key} value={o.key} disabled={!o.available}>
-                    {o.available ? o.label : `${o.label} (not in this data)`}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="custom-link">Linked by</label>
+      <ParamGroup title="Nodes" subtitle="what each dot is">
+        {relation === "custom" && opts && (
+          <ParamRow
+            id="custom-entity"
+            label="Nodes"
+            help="What each dot in the graph is. All of them that appear on the same article can be linked to each other."
+          >
+            <select
+              id="custom-entity"
+              className="select"
+              value={custom.entity}
+              aria-describedby="custom-entity-help"
+              onChange={(e) => chooseEntity(e.target.value)}
+            >
+              {opts.entities.map((o) => (
+                <option key={o.key} value={o.key} disabled={!o.available}>
+                  {o.available ? o.label : `${o.label} (not in this data)`}
+                </option>
+              ))}
+            </select>
+          </ParamRow>
+        )}
+        {field("topN", "top-n")}
+      </ParamGroup>
+
+      <ParamGroup title="Links" subtitle="when two nodes are connected">
+        {LINKS_HELP[relation] && <p className="param-help">{LINKS_HELP[relation]}</p>}
+        {relation === "institution_keywords" && (
+          <>
+            {field("minShared", "min-shared")}
+            {field("maxKeywordPct", "max-df")}
+          </>
+        )}
+        {relation === "custom" && opts && (
+          <>
+            <ParamRow
+              id="custom-link"
+              label="Linked by"
+              help={
+                sameArticle
+                  ? "Two nodes are linked each time they appear on the same article; link weight = articles in common."
+                  : "The article field compared to decide whether two nodes are connected. Link weight = number of matching article pairs."
+              }
+            >
               <select
                 id="custom-link"
                 className="select"
                 value={custom.link}
+                aria-describedby="custom-link-help"
                 onChange={(e) => chooseLink(e.target.value)}
               >
                 {linksForEntity.map((o) => (
@@ -286,14 +368,22 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
                   </option>
                 ))}
               </select>
-            </div>
-            {link?.kind !== "same_article" && (
-              <div className="field">
-                <label htmlFor="custom-model">Model</label>
+            </ParamRow>
+            {!sameArticle && (
+              <ParamRow
+                id="custom-model"
+                label="Model"
+                help={
+                  <>
+                    How two values of the field are compared. <span>{model?.description}</span>
+                  </>
+                }
+              >
                 <select
                   id="custom-model"
                   className="select"
                   value={custom.model}
+                  aria-describedby="custom-model-help"
                   onChange={(e) => chooseModel(e.target.value)}
                 >
                   {opts.models
@@ -304,45 +394,25 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
                       </option>
                     ))}
                 </select>
-              </div>
+              </ParamRow>
             )}
-          </div>
-          <p className="hint custom-hint">
-            {link?.kind === "same_article"
-              ? "Links two entities each time they appear on the same article."
-              : model?.description}
-          </p>
-          {modelFields.length > 0 && (
-            <div className="form-row form-row-top">
-              {modelFields.map((name) => field(name, `custom-${name}`))}
-            </div>
-          )}
-        </>
-      )}
+            {modelFields.map((name) => field(name, `custom-${name}`))}
+          </>
+        )}
+      </ParamGroup>
 
       <details>
         <summary>More options</summary>
-        <div className="form-row" style={{ marginTop: 12 }}>
-          <div className="field">
-            <label htmlFor="max-authors">Ignore papers with more authors than</label>
-            <input id="max-authors" {...inputProps("maxAuthors")} />
-            <span className="hint">Large consensus papers otherwise dominate the network.</span>
-          </div>
-          {relation === "institution_keywords" && (
-            <>
-              <div className="field">
-                <label htmlFor="min-shared">Minimum shared keywords</label>
-                <input id="min-shared" {...inputProps("minShared")} />
-              </div>
-              <div className="field">
-                <label htmlFor="max-df">Ignore keywords used by more than (%)</label>
-                <input id="max-df" {...inputProps("maxKeywordPct")} />
-                <span className="hint">Very common keywords don’t indicate a real overlap.</span>
-              </div>
-            </>
-          )}
-        </div>
+        <ParamGroup title="Articles" subtitle="filtered before anything is linked">
+          {field("maxAuthors", "max-authors")}
+        </ParamGroup>
       </details>
+
+      <div>
+        <button type="submit" className="btn btn-primary" disabled={create.isPending || !canBuild}>
+          {create.isPending ? "Queuing…" : "Build network"}
+        </button>
+      </div>
       {problems.length > 0 && (
         <ul id="build-network-problems" className="error field-problems" role="alert">
           {problems.map(([name, problem]) => (
@@ -352,5 +422,49 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
       )}
       {create.isError && <ErrorNote error={create.error} />}
     </form>
+  );
+}
+
+function ParamGroup({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  children: ReactNode;
+}) {
+  return (
+    <fieldset className="param-group">
+      <legend>
+        {title} <span className="param-group-sub">· {subtitle}</span>
+      </legend>
+      {children}
+    </fieldset>
+  );
+}
+
+/** One parameter: its name above the control, and what it does to the right. */
+function ParamRow({
+  id,
+  label,
+  help,
+  children,
+}: {
+  id: string;
+  label: string;
+  help: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="param-row">
+      <div className="field">
+        <label htmlFor={id}>{label}</label>
+        {children}
+      </div>
+      <p id={`${id}-help`} className="param-help">
+        {help}
+      </p>
+    </div>
   );
 }

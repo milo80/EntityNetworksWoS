@@ -175,7 +175,17 @@ describe("datasets", () => {
     const form = await screen.findByRole("form", { name: "Build network" });
     await user.selectOptions(within(form).getByLabelText("Relationship"), "institution_keywords");
     expect(within(form).getByLabelText("Maximum nodes")).toHaveValue(150);
-    await user.click(within(form).getByText("More options"));
+    // Parameters are grouped by what they act on; keyword settings are link
+    // parameters, shown without opening "More options".
+    const links = within(form).getByRole("group", { name: /^Links/ });
+    expect(within(form).getByRole("group", { name: /^Nodes/ })).toContainElement(
+      within(form).getByLabelText("Maximum nodes"),
+    );
+    expect(links).toContainElement(within(form).getByLabelText("Minimum shared keywords"));
+    expect(within(form).getByLabelText("Minimum shared keywords")).toBeVisible();
+    expect(within(form).getByLabelText("Minimum shared keywords")).toHaveAccessibleDescription(
+      /share at least this many keywords/,
+    );
     await user.clear(within(form).getByLabelText("Minimum shared keywords"));
     await user.type(within(form).getByLabelText("Minimum shared keywords"), "4");
     await user.clear(within(form).getByLabelText("Ignore keywords used by more than (%)"));

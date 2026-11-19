@@ -74,6 +74,13 @@ name. display_name carries the actual name for everything user-facing.
 Mega-paper filtering: articles with >15 authors are dropped before the
 graph is built (filter_out_mega_papers) — otherwise one huge consensus
 paper forms an artificial clique that dominates degree-based sampling.
+Measured on the 3,000-article sample: an article with n authors yields
+n(n-1)/2 pairs, so the 3.6% of articles with >15 authors produce 58% of all
+co-author pairs (the largest has 220 authors). Without the cut, the author
+network goes from 42.6k to 76.5k links (top degree 42 -> 112) and institutions
+by keywords from 8.2k to 13.4k (top degree 119 -> 191). It filters articles,
+so it applies to every relationship; the form shows it under "More options"
+as the "Articles" group.
 Sampling: build_connected_sample() samples from the largest connected
 component(s), not raw top-N-by-degree — top-N-by-degree can produce a
 near-disconnected sample once mega-papers are removed.
