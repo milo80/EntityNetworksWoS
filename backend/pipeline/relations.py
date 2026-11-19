@@ -19,6 +19,7 @@ from .authors import (
     prepare_author_lists,
     resolve_author_ids,
 )
+from .custom import CustomParams, custom_network
 from .export import graph_to_network
 from .institutions import enrich_with_institution_data, prepare_article_institution_data
 from .keywords import parse_keyword_columns
@@ -126,4 +127,5 @@ def institution_keyword_network(
 RELATIONS: dict[str, tuple[Callable[[pd.DataFrame, Any], dict], type[Any]]] = {
     "author": (author_network, AuthorNetworkParams),
     "institution_keywords": (institution_keyword_network, InstitutionKeywordParams),
+    "custom": (custom_network, CustomParams),
 }

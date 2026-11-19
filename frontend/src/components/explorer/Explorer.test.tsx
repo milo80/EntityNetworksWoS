@@ -1,7 +1,7 @@
 // Explorer behavior through real user interaction (DOM events via user-event).
 // Cytoscape needs a canvas jsdom doesn't have, so GraphView is replaced by a
 // probe that exposes what the Explorer asked the graph to show.
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -38,9 +38,9 @@ beforeAll(() => {
   Element.prototype.scrollIntoView ??= () => {};
 });
 
-function setup() {
+function setup(network = sampleNetwork()) {
   const user = userEvent.setup();
-  render(<Explorer network={sampleNetwork()} title="Test network" />);
+  render(<Explorer network={network} title="Test network" />);
   const filters = screen.getByRole("complementary", { name: "Filters" });
   const details = screen.getByRole("complementary", { name: "Details" });
   return { user, filters, details };
@@ -77,13 +77,6 @@ describe("Explorer", () => {
     expect(json.match(/"source"/g)).toHaveLength(1);
   });
 
-  it("Relationship checkbox hides links but keeps nodes", async () => {
-    const { user, filters } = setup();
-    await user.click(within(filters).getByRole("checkbox", { name: "Collaborates With" }));
-    expect(graph().dataset.nodes).toBe("a,b,c,d,z");
-    expect(graph().dataset.edges).toBe("2");
-  });
-
   it("'Hide all' / 'Show all' toggles every group", async () => {
     const { user, filters } = setup();
     await user.click(within(filters).getByRole("button", { name: "Hide all" }));
@@ -94,7 +87,7 @@ describe("Explorer", () => {
 
   it("name search highlights only, never hides", async () => {
     const { user, filters, details } = setup();
-    await user.type(within(filters).getByRole("searchbox", { name: "Find by name" }), "ROSSI");
+    await user.type(within(filters).getByRole("searchbox", { name: "Find by node name" }), "ROSSI");
     expect(graph().dataset.search).toBe("rossi");
     expect(screen.getByText("1 match highlighted")).toBeInTheDocument();
     expect(graph().dataset.nodes).toBe("a,b,c,d,z");
@@ -175,5 +168,29 @@ describe("Explorer", () => {
       .getAllByRole("checkbox")
       .map((c) => c.closest("label")!.textContent);
     expect(labels).toEqual(["Italy2", "USA2", "Other1"]);
+  });
+
+  it("link weight range hides links by weight; the checkbox hides nodes left unlinked", async () => {
+    const { user, filters, details } = setup();
+    const low = within(filters).getByLabelText("Lowest link weight shown");
+    expect(within(filters).getByText(/4 of 4 links/)).toBeInTheDocument();
+
+    fireEvent.change(low, { target: { value: "1" } }); // the next weight that exists: 2
+    expect(screen.getByText("5 of 5 nodes · 1 of 4 links shown")).toBeInTheDocument();
+    expect(graph().dataset.edges).toBe("0");
+
+    await user.click(within(filters).getByLabelText("Hide nodes without visible links"));
+    expect(screen.getByText("2 of 5 nodes · 1 of 4 links shown")).toBeInTheDocument();
+    expect(readableNames(details)).toHaveLength(2);
+
+    await user.click(within(filters).getByRole("button", { name: "Reset" }));
+    expect(screen.getByText("4 of 5 nodes · 4 of 4 links shown")).toBeInTheDocument(); // z has no links
+  });
+
+  it("explains instead of showing a bar when every link has the same weight", () => {
+    const net = sampleNetwork();
+    const { filters } = setup({ ...net, edges: net.edges.map((e) => ({ ...e, weight: 1 })) });
+    expect(within(filters).getByText("All links have weight 1.")).toBeInTheDocument();
+    expect(within(filters).queryByLabelText("Lowest link weight shown")).toBeNull();
   });
 });

@@ -1,17 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
-import { api, type Relation, type Run, type RunCreate } from "../api/client";
+import { api, type Run } from "../api/client";
 import { ErrorNote, Status, formatBytes, formatDate, formatNumber } from "../components/common";
+import { describeParams, runTitle, useNetworkOptions } from "../lib/runLabels";
+import { BuildNetworkForm, runsKey } from "./BuildNetworkForm";
 import { DATASETS_KEY } from "./DatasetsPage";
-
-export const RELATION_LABEL: Record<string, string> = {
-  author: "Co-authorship",
-  institution_keywords: "Institutions by shared keywords",
-};
-
-const runsKey = (datasetId: number) => ["runs", datasetId] as const;
 
 export function DatasetPage() {
   const datasetId = Number(useParams().datasetId);
@@ -103,6 +97,9 @@ export function DatasetPage() {
 
 function RunTable({ runs, datasetId }: { runs: Run[]; datasetId: number }) {
   const qc = useQueryClient();
+  const options = useNetworkOptions(
+    runs.some((r) => r.relation === "custom") ? datasetId : undefined,
+  );
   const remove = useMutation({
     mutationFn: api.deleteRun,
     onSuccess: () => qc.invalidateQueries({ queryKey: runsKey(datasetId) }),
@@ -127,8 +124,8 @@ function RunTable({ runs, datasetId }: { runs: Run[]; datasetId: number }) {
           {runs.map((r) => (
             <tr key={r.id}>
               <td>
-                {RELATION_LABEL[r.relation] ?? r.relation}
-                <div className="muted small">{describeParams(r)}</div>
+                {runTitle(r, options.data)}
+                <div className="muted small">{describeParams(r, options.data)}</div>
               </td>
               <td className="num">{r.node_count != null ? formatNumber(r.node_count) : "–"}</td>
               <td className="num">{r.edge_count != null ? formatNumber(r.edge_count) : "–"}</td>
@@ -163,138 +160,5 @@ function RunTable({ runs, datasetId }: { runs: Run[]; datasetId: number }) {
         </tbody>
       </table>
     </>
-  );
-}
-
-function describeParams(run: Run): string {
-  const p = run.params as Record<string, unknown>;
-  const parts = [`up to ${p.top_n} nodes`];
-  if (run.relation === "institution_keywords") {
-    parts.push(`≥ ${p.min_shared_keywords} shared keywords`);
-  }
-  parts.push(`papers ≤ ${p.max_authors} authors`);
-  return parts.join(" · ");
-}
-
-// Initial values mirror the API defaults (app/schemas/api.py).
-const DEFAULT_TOP_N: Record<Relation, number> = { author: 700, institution_keywords: 150 };
-
-function BuildNetworkForm({ datasetId }: { datasetId: number }) {
-  const qc = useQueryClient();
-  const [relation, setRelation] = useState<Relation>("author");
-  const [topN, setTopN] = useState(DEFAULT_TOP_N.author);
-  const [maxAuthors, setMaxAuthors] = useState(15);
-  const [minShared, setMinShared] = useState(3);
-  const [maxKeywordPct, setMaxKeywordPct] = useState(12);
-
-  const create = useMutation({
-    mutationFn: (body: RunCreate) => api.createRun(body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: runsKey(datasetId) }),
-  });
-
-  const chooseRelation = (r: Relation) => {
-    setRelation(r);
-    setTopN(DEFAULT_TOP_N[r]);
-  };
-
-  const onSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    const common = { top_n: topN, max_authors: maxAuthors };
-    create.mutate(
-      relation === "author"
-        ? { dataset_id: datasetId, relation, params: common }
-        : {
-            dataset_id: datasetId,
-            relation,
-            params: {
-              ...common,
-              min_shared_keywords: minShared,
-              max_keyword_df: maxKeywordPct / 100,
-            },
-          },
-    );
-  };
-
-  return (
-    <form className="panel-form" onSubmit={onSubmit} aria-label="Build network">
-      <div className="form-row">
-        <div className="field">
-          <label htmlFor="relation">Relationship</label>
-          <select
-            id="relation"
-            className="select"
-            value={relation}
-            onChange={(e) => chooseRelation(e.target.value as Relation)}
-          >
-            <option value="author">{RELATION_LABEL.author}</option>
-            <option value="institution_keywords">{RELATION_LABEL.institution_keywords}</option>
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="top-n">Maximum nodes</label>
-          <input
-            id="top-n"
-            className="input"
-            type="number"
-            min={10}
-            max={2000}
-            required
-            value={topN}
-            onChange={(e) => setTopN(Number(e.target.value))}
-          />
-        </div>
-        <button type="submit" className="btn btn-primary" disabled={create.isPending}>
-          {create.isPending ? "Queuing…" : "Build network"}
-        </button>
-      </div>
-      <details>
-        <summary>More options</summary>
-        <div className="form-row" style={{ marginTop: 12 }}>
-          <div className="field">
-            <label htmlFor="max-authors">Ignore papers with more authors than</label>
-            <input
-              id="max-authors"
-              className="input"
-              type="number"
-              min={2}
-              max={200}
-              value={maxAuthors}
-              onChange={(e) => setMaxAuthors(Number(e.target.value))}
-            />
-            <span className="hint">Large consensus papers otherwise dominate the network.</span>
-          </div>
-          {relation === "institution_keywords" && (
-            <>
-              <div className="field">
-                <label htmlFor="min-shared">Minimum shared keywords</label>
-                <input
-                  id="min-shared"
-                  className="input"
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={minShared}
-                  onChange={(e) => setMinShared(Number(e.target.value))}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="max-df">Ignore keywords used by more than (%)</label>
-                <input
-                  id="max-df"
-                  className="input"
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={maxKeywordPct}
-                  onChange={(e) => setMaxKeywordPct(Number(e.target.value))}
-                />
-                <span className="hint">Very common keywords don’t indicate a real overlap.</span>
-              </div>
-            </>
-          )}
-        </div>
-      </details>
-      {create.isError && <ErrorNote error={create.error} />}
-    </form>
   );
 }

@@ -6,12 +6,22 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from pipeline import custom
+
 from ..auth.ratelimit import rate_limit
 from ..auth.sessions import CurrentUser
 from ..config import Settings, get_settings
 from ..db import get_db
 from ..models import Dataset, DatasetFile
-from ..schemas.api import DatasetOut, DatasetProfileOut
+from ..schemas.api import (
+    CustomParams,
+    DatasetOut,
+    DatasetProfileOut,
+    EntityOption,
+    LinkOption,
+    ModelOption,
+    NetworkOptionsOut,
+)
 from ..services.storage import UploadRejected, dataset_dir, remove_dataset_dir, save_upload
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
@@ -99,6 +109,60 @@ def get_dataset_profile(dataset_id: int, user: CurrentUser, db: Db) -> DatasetPr
         error=dataset.profile_error,
         profile=dataset.profile if dataset.profile_status == "ready" else None,
     )
+
+
+@router.get("/{dataset_id}/network-options", response_model=NetworkOptionsOut)
+def get_network_options(dataset_id: int, user: CurrentUser, db: Db) -> NetworkOptionsOut:
+    """What a custom network can be built from: entities, link fields and models.
+
+    Availability comes from the dataset's profile (column fill). While the
+    profile isn't ready, everything is offered.
+    """
+    dataset = get_owned_dataset(db, user.id, dataset_id)
+    fill: dict[str, float] | None = None
+    if dataset.profile_status == "ready" and dataset.profile:
+        fill = {c["name"]: c["non_empty_pct"] for c in dataset.profile.get("schema", [])}
+    problems = custom.availability(fill) if fill is not None else None
+
+    def reason(group: str, key: str) -> str | None:
+        return problems[group][key] if problems else None
+
+    entities = [
+        EntityOption(
+            key=key,
+            label=spec.label,
+            many_per_article=spec.many_per_article,
+            available=reason("entities", key) is None,
+            reason=reason("entities", key),
+            links=[
+                link
+                for link, lspec in custom.LINKS.items()
+                if custom.combination_problem(key, link, lspec.models[0]) is None
+            ],
+        )
+        for key, spec in custom.ENTITIES.items()
+    ]
+    links = [
+        LinkOption(
+            key=key,
+            label=spec.label,
+            kind=spec.kind,
+            models=list(spec.models),
+            available=reason("links", key) is None,
+            reason=reason("links", key),
+        )
+        for key, spec in custom.LINKS.items()
+    ]
+    models = [
+        ModelOption(
+            key=key,
+            label=label,
+            description=custom.MODEL_DESCRIPTIONS[key],
+            threshold_default=custom.THRESHOLD_DEFAULTS.get(key),
+        )
+        for key, label in custom.MODELS.items()
+    ]
+    return NetworkOptionsOut(entities=entities, links=links, models=models, defaults=CustomParams())
 
 
 @router.delete("/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)

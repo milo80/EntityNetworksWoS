@@ -29,6 +29,9 @@ institution networks (co-authorship, shared-keyword collaboration).
   (see `frontend/README.md`).
 - Step 6 (done): Docker Compose stack with Caddy, CI, browser tests, backups -
   see [`deploy/README.md`](deploy/README.md). QA and PROD servers: [`infra/README.md`](infra/README.md).
+- Step 7: custom networks - choose the nodes (entity), the field that links
+  them and the model that compares it (`backend/pipeline/custom.py`, see
+  `docs/design-notes.md`).
 
 ## Where things are documented
 
@@ -164,7 +167,8 @@ orphaned run(s)" and finishes the run. To find the worker's PID, don't use
 | POST/GET | `/api/datasets` | upload WoS `.xls` files (multipart: `name`, `files`) / list |
 | GET/DELETE | `/api/datasets/{id}` | |
 | GET | `/api/datasets/{id}/profile` | overview of the uploaded data (computed by the worker) |
-| POST/GET | `/api/runs` | queue `{dataset_id, relation, params?}` / list |
+| GET | `/api/datasets/{id}/network-options` | what a custom network can be built from in this dataset |
+| POST/GET | `/api/runs` | queue `{dataset_id, relation, params?}` / list. `relation`: `author`, `institution_keywords` or `custom` (params `entity`, `link`, `model`, see `docs/openapi.json`) |
 | GET/DELETE | `/api/runs/{id}` | status: queued, running, succeeded, failed |
 | GET | `/api/runs/{id}/network`, `/api/runs/{id}/export` | network JSON (ETag) / as download |
 | GET | `/api/health` | |

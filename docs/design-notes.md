@@ -289,6 +289,19 @@ sits behind an "Attribute search" disclosure; a selection box at the top of the
 details panel shows the clicked node/link with all its attributes; clicking an
 entry in the Readable list selects and centres it in the graph. Below 1024 px
 the side panels become toggleable drawers.
+(Added after step 7: a "Link weight" range in the filters panel hides links
+outside a chosen window of weights - shared articles, or matched article pairs,
+per link - in the graph, the Readable list and the JSON alike. It steps over the
+distinct weights that exist rather than a linear scale, because weights are very
+skewed (most links often have weight 1), and shows a histogram of links per
+weight. It hides links only; a "Hide nodes
+without visible links" checkbox, off by default, also hides nodes left without a
+visible link, including nodes that never had one. It replaces a planned
+build-time "strongest k links per node" cap: the reader picks the window after
+the build, so one run serves several views.)
+(Removed at the same time: the Relationship checkboxes. Every network the app
+builds has a single link type, so they never filtered anything; the rule stays
+in lib/visibility.ts with every type checked.)
 
 Group colors: the 7 largest groups get the first 7 slots of the reference
 categorical palette in its fixed order (blue, orange, aqua, yellow, magenta,
@@ -365,3 +378,64 @@ commit SHA, and servers pull those, so a server can only run a commit CI
 passed, and the image that runs is the one that was tested. PROD gets the
 commit QA runs (promotion). Deploys are still started by hand. How:
 infra/README.md and deploy/README.md.)
+
+
+Custom networks (step 7)
+
+Besides the two fixed relations, a network can be built from three choices
+(backend/pipeline/custom.py): the nodes (an entity), the field that links them,
+and the model that compares that field. All combinations share one algorithm:
+each article gets its entities; the model finds the pairs of articles that match
+on the link field; two entities are linked once per matched article pair in
+which they appear on opposite sides, never with themselves (weight = number of
+matched article pairs). "Same article" is the link where each article matches
+itself, which gives co-occurrence networks: Author x Same article is
+co-authorship. Corresponding institution x Keywords x word matching equals the
+institution keyword relation exactly (tested on the synthetic data, checked on
+the real sample: 2,040 nodes, 3,213 edges, same weights). The author preset
+counts an article twice when WoS lists an author twice on it; the custom engine
+counts it once.
+
+Curated catalog, not any column: WoS exports always have the same columns, and
+the useful ones need parsing (ORCID merge for authors, institutions and
+countries inside Addresses, grant numbers inside Funding Orgs). An entity is a
+categorical value that names a real thing, repeats across articles (Article
+itself is the exception), and is filled in at least 20% of a dataset's articles
+(MIN_FILL_PCT); numbers, dates, IDs and free text don't qualify. Link fields are
+lists (";"-separated items: keywords, categories, funders, organizations,
+authors) or strings (title, journal, abstract, funding text). Availability per
+dataset comes from the stored profile's column fill, so no recompute is needed.
+A link field can't be the entity's own column, and Same article needs an entity
+with several values per article.
+
+Models:
+- word matching (list fields): article pairs sharing at least N items,
+  normalized like keywords; items in more than a share of the articles are
+  ignored (the institution keyword logic, generalized).
+- string similarity, word overlap: Jaccard of the word sets (lowercased, stop
+  words and words under 3 letters dropped) >= threshold.
+- string similarity, characters: difflib SequenceMatcher ratio >= threshold;
+  catches spelling variants ("Univ Toronto" ~ "University of Toronto"). Only
+  offered for short fields (title, journal): it is too slow for abstracts.
+Both string models compare distinct values, and only values that share a word
+used by at most a share of the articles (default 5%): an inverted index keeps
+the comparisons far below all pairs. Identical values always match. Measured
+on the 3,000-article sample: titles 0.2 s, abstracts about 11 s.
+
+Defaults (measured on the 3,000-article sample with the wos-explore skill, and
+checked against published practice: VOSviewer and bibliometrix defaults,
+deduplication and name-matching studies): word matching needs 3 shared items, each in at most 5% of the
+articles; word overlap 0.5; characters 0.9 (published name-matching cutoffs are
+0.85-0.95, and different authors such as "zhang wei" / "zhang wen" already score
+0.89). The first defaults (2 items, 12%) gave institution and organization
+networks an average degree of 87-216 on 300 nodes; the new ones give 4-22 for
+every entity. A minimum link weight (matched article pairs per link, default 1)
+drops weak links before sampling. It defaults to 1 because Article nodes only
+ever have weight-1 links; for authors and institutions 87-99% of links have
+weight 1, so 2 thins them a lot. For coarse entities (countries, categories)
+weights run into the hundreds and even 10 leaves a near-complete graph.
+
+Limits: a run that would match more than 2,000,000 article pairs (or score more
+than 5,000,000 value pairs) fails with a message asking for a stricter setting,
+instead of exhausting the worker's memory. Standard library only (difflib, re):
+no new dependency.

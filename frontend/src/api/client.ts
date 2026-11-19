@@ -12,14 +12,17 @@ export type DatasetProfileResponse = S["DatasetProfileOut"];
 export type Run = S["RunOut"];
 export type AuthorParams = S["AuthorParams"];
 export type InstitutionKeywordParams = S["InstitutionKeywordParams"];
-export type Relation = Run["relation"] & ("author" | "institution_keywords");
+export type CustomParams = S["CustomParams"];
+export type NetworkOptions = S["NetworkOptionsOut"];
+export type Relation = Run["relation"] & ("author" | "institution_keywords" | "custom");
 export type RunCreate =
   | { dataset_id: number; relation: "author"; params?: Partial<AuthorParams> }
   | {
       dataset_id: number;
       relation: "institution_keywords";
       params?: Partial<InstitutionKeywordParams>;
-    };
+    }
+  | { dataset_id: number; relation: "custom"; params?: Partial<CustomParams> };
 
 const CSRF_COOKIE = "entitynet_csrf";
 const CSRF_HEADER = "X-CSRF-Token";
@@ -90,6 +93,7 @@ export const api = {
   listDatasets: () => request<Dataset[]>("/datasets"),
   getDataset: (id: number) => request<Dataset>(`/datasets/${id}`),
   getProfile: (id: number) => request<DatasetProfileResponse>(`/datasets/${id}/profile`),
+  getNetworkOptions: (id: number) => request<NetworkOptions>(`/datasets/${id}/network-options`),
   uploadDataset: (name: string, files: File[]) => {
     const form = new FormData();
     form.append("name", name);

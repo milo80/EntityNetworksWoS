@@ -192,6 +192,182 @@ describe("datasets", () => {
     expect(await screen.findByText("Queued")).toBeInTheDocument();
   });
 
+  it("lets a number field be emptied while editing, and blocks building while one is empty", async () => {
+    const { calls } = mockApi({
+      "GET /auth/me": () => ({ body: SESSION }),
+      "GET /datasets/7": () => ({ body: DATASET }),
+      "GET /runs?dataset_id=7": () => ({ body: [] }),
+    });
+    const user = renderApp("/datasets/7");
+
+    const form = await screen.findByRole("form", { name: "Build network" });
+    await user.click(within(form).getByText("More options"));
+    const maxAuthors = within(form).getByLabelText("Ignore papers with more authors than");
+    const build = within(form).getByRole("button", { name: "Build network" });
+
+    // Clearing leaves the field empty (no 0 put back), so 15 -> 8 gives 8, not 08.
+    await user.clear(maxAuthors);
+    expect(maxAuthors).toHaveDisplayValue("");
+    expect(build).toBeDisabled();
+    await user.type(maxAuthors, "8");
+    expect(maxAuthors).toHaveDisplayValue("8");
+    expect(build).toBeEnabled();
+
+    // Left empty: a red message once the field loses focus, and no request.
+    await user.clear(maxAuthors);
+    await user.tab();
+    expect(maxAuthors).toHaveAttribute("aria-invalid", "true");
+    expect(within(form).getByRole("alert")).toHaveTextContent(
+      "Ignore papers with more authors than: enter a value.",
+    );
+    expect(build).toBeDisabled();
+
+    // Out of range is caught the same way.
+    await user.type(maxAuthors, "1");
+    expect(within(form).getByRole("alert")).toHaveTextContent("enter a whole number from 2 to 200");
+    expect(calls.some((c) => c.method === "POST" && c.path === "/runs")).toBe(false);
+  });
+
+  it("builds a custom network, keeping nodes, link field and model compatible", async () => {
+    document.cookie = "entitynet_csrf=token-123; path=/";
+    const runs: unknown[] = [];
+    const entity = (key: string, label: string, links: string[], available = true) => ({
+      key,
+      label,
+      many_per_article: true,
+      available,
+      reason: available ? null : "Funding Orgs is filled in only 5% of the articles",
+      links,
+    });
+    const link = (key: string, label: string, kind: string, models: string[]) => ({
+      key,
+      label,
+      kind,
+      models,
+      available: true,
+      reason: null,
+    });
+    const OPTIONS = {
+      entities: [
+        entity("institution", "Institution (all authors)", ["keywords", "article_title"]),
+        entity("journal", "Journal", ["keywords", "article_title"]),
+        entity("funder", "Funder", ["keywords"], false),
+      ],
+      links: [
+        link("keywords", "Keywords", "list", ["word_matching"]),
+        link("article_title", "Article title", "string", ["word_overlap", "character_similarity"]),
+      ],
+      models: [
+        {
+          key: "word_matching",
+          label: "Word matching",
+          description: "Shared items.",
+          threshold_default: null,
+        },
+        {
+          key: "word_overlap",
+          label: "Word overlap",
+          description: "Shared words.",
+          threshold_default: 0.4,
+        },
+        {
+          key: "character_similarity",
+          label: "Characters",
+          description: "Spelled alike.",
+          threshold_default: 0.85,
+        },
+      ],
+      defaults: {
+        entity: "institution",
+        link: "keywords",
+        model: "word_matching",
+        min_shared: 2,
+        max_item_df: 0.12,
+        threshold: 0.4,
+        max_word_df: 0.05,
+        min_weight: 1,
+        top_n: 300,
+        max_authors: 15,
+        max_team_categories: 12,
+        min_team_size: 2,
+      },
+    };
+    const { calls } = mockApi({
+      "GET /auth/me": () => ({ body: SESSION }),
+      "GET /datasets/7": () => ({ body: DATASET }),
+      "GET /datasets/7/network-options": () => ({ body: OPTIONS }),
+      "GET /runs?dataset_id=7": () => ({ body: runs }),
+      "POST /runs": (req) => {
+        const run = {
+          id: 4,
+          dataset_id: 7,
+          status: "queued",
+          error: null,
+          node_count: null,
+          edge_count: null,
+          created_at: "2026-11-12T10:00:00Z",
+          started_at: null,
+          finished_at: null,
+          ...(req.body as object),
+        };
+        runs.push(run);
+        return { status: 202, body: run };
+      },
+    });
+    const user = renderApp("/datasets/7");
+
+    const form = await screen.findByRole("form", { name: "Build network" });
+    await user.selectOptions(within(form).getByLabelText("Relationship"), "custom");
+    const nodes = await within(form).findByLabelText("Nodes");
+    expect(nodes).toHaveValue("institution");
+    expect(within(form).getByLabelText("Maximum nodes")).toHaveValue(300);
+    expect(within(form).getByLabelText("Minimum shared items")).toHaveValue(2);
+    // Unavailable entities are shown but can't be chosen.
+    expect(
+      within(nodes).getByRole("option", { name: /Funder \(not in this data\)/ }),
+    ).toBeDisabled();
+
+    // A string field offers only the string models; choosing one sets its default threshold.
+    await user.selectOptions(nodes, "journal");
+    await user.selectOptions(within(form).getByLabelText("Linked by"), "article_title");
+    const model = within(form).getByLabelText("Model");
+    expect(
+      within(model)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Word overlap", "Characters"]);
+    expect(within(form).getByLabelText("Minimum similarity (%)")).toHaveValue(40);
+    await user.selectOptions(model, "character_similarity");
+    expect(within(form).getByLabelText("Minimum similarity (%)")).toHaveValue(85);
+    expect(within(form).getByText("Spelled alike.")).toBeInTheDocument();
+
+    const minWeight = within(form).getByLabelText("Minimum link weight");
+    expect(minWeight).toHaveValue(1);
+    await user.clear(minWeight);
+    await user.type(minWeight, "3");
+
+    await user.click(within(form).getByRole("button", { name: "Build network" }));
+    const post = calls.find((c) => c.method === "POST" && c.path === "/runs")!;
+    expect(post.body).toEqual({
+      dataset_id: 7,
+      relation: "custom",
+      params: {
+        top_n: 300,
+        max_authors: 15,
+        entity: "journal",
+        link: "article_title",
+        model: "character_similarity",
+        min_shared: 2,
+        max_item_df: 0.12,
+        threshold: 0.85,
+        max_word_df: 0.05,
+        min_weight: 3,
+      },
+    });
+    // The new run is listed with labels from the options.
+    expect(await screen.findByText("Journal linked by Article title")).toBeInTheDocument();
+  });
+
   it("shows the data page from a real pipeline profile", async () => {
     mockApi({
       "GET /auth/me": () => ({ body: SESSION }),

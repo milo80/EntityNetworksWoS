@@ -20,10 +20,6 @@ export function teamsOf(network: Network): string[] {
   return distinct(network.nodes.map((n) => n.team));
 }
 
-export function relationTypesOf(network: Network): string[] {
-  return distinct(network.edges.map((e) => e.type));
-}
-
 export function prettyTeam(team: string): string {
   if (team === TEAM_OTHER) return "Other";
   if (team === TEAM_UNKNOWN) return "Unknown";

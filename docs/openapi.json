@@ -404,6 +404,49 @@
         }
       }
     },
+    "/api/datasets/{dataset_id}/network-options": {
+      "get": {
+        "tags": [
+          "datasets"
+        ],
+        "summary": "Get Network Options",
+        "description": "What a custom network can be built from: entities, link fields and models.\n\nAvailability comes from the dataset's profile (column fill). While the\nprofile isn't ready, everything is offered.",
+        "operationId": "get_network_options_api_datasets__dataset_id__network_options_get",
+        "parameters": [
+          {
+            "name": "dataset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Dataset Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkOptionsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/runs": {
       "post": {
         "tags": [
@@ -423,13 +466,17 @@
                   },
                   {
                     "$ref": "#/components/schemas/InstitutionKeywordRunCreate"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CustomRunCreate"
                   }
                 ],
                 "discriminator": {
                   "propertyName": "relation",
                   "mapping": {
                     "author": "#/components/schemas/AuthorRunCreate",
-                    "institution_keywords": "#/components/schemas/InstitutionKeywordRunCreate"
+                    "institution_keywords": "#/components/schemas/InstitutionKeywordRunCreate",
+                    "custom": "#/components/schemas/CustomRunCreate"
                   }
                 },
                 "title": "Body"
@@ -802,6 +849,169 @@
         ],
         "title": "Credentials"
       },
+      "CustomParams": {
+        "properties": {
+          "max_authors": {
+            "type": "integer",
+            "maximum": 200.0,
+            "minimum": 2.0,
+            "title": "Max Authors",
+            "description": "Drop articles with more authors",
+            "default": 15
+          },
+          "max_team_categories": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Max Team Categories",
+            "default": 12
+          },
+          "min_team_size": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Min Team Size",
+            "default": 2
+          },
+          "entity": {
+            "type": "string",
+            "enum": [
+              "author",
+              "institution",
+              "corresponding_institution",
+              "country",
+              "organization",
+              "journal",
+              "funder",
+              "wos_category",
+              "research_area",
+              "article"
+            ],
+            "title": "Entity",
+            "description": "What the nodes are",
+            "default": "institution"
+          },
+          "link": {
+            "type": "string",
+            "enum": [
+              "same_article",
+              "keywords",
+              "author_keywords",
+              "keywords_plus",
+              "wos_categories",
+              "research_areas",
+              "funders",
+              "organizations",
+              "authors",
+              "article_title",
+              "journal",
+              "abstract",
+              "funding_text"
+            ],
+            "title": "Link",
+            "description": "The field that links them",
+            "default": "keywords"
+          },
+          "model": {
+            "type": "string",
+            "enum": [
+              "word_matching",
+              "word_overlap",
+              "character_similarity"
+            ],
+            "title": "Model",
+            "description": "How the field is compared",
+            "default": "word_matching"
+          },
+          "min_shared": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Min Shared",
+            "description": "Word matching: shared items needed",
+            "default": 3
+          },
+          "max_item_df": {
+            "type": "number",
+            "maximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Item Df",
+            "description": "Word matching: ignore items in more than this share",
+            "default": 0.05
+          },
+          "threshold": {
+            "type": "number",
+            "maximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Threshold",
+            "description": "String similarity: minimum similarity (0-1)",
+            "default": 0.5
+          },
+          "max_word_df": {
+            "type": "number",
+            "maximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Word Df",
+            "description": "String similarity: ignore words in more than this share",
+            "default": 0.05
+          },
+          "min_weight": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Min Weight",
+            "description": "Keep links with at least this many matched article pairs",
+            "default": 1
+          },
+          "top_n": {
+            "type": "integer",
+            "maximum": 2000.0,
+            "minimum": 10.0,
+            "title": "Top N",
+            "default": 300
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CustomParams"
+      },
+      "CustomRunCreate": {
+        "properties": {
+          "dataset_id": {
+            "type": "integer",
+            "title": "Dataset Id"
+          },
+          "relation": {
+            "type": "string",
+            "const": "custom",
+            "title": "Relation"
+          },
+          "params": {
+            "$ref": "#/components/schemas/CustomParams",
+            "default": {
+              "max_authors": 15,
+              "max_team_categories": 12,
+              "min_team_size": 2,
+              "entity": "institution",
+              "link": "keywords",
+              "model": "word_matching",
+              "min_shared": 3,
+              "max_item_df": 0.05,
+              "threshold": 0.5,
+              "max_word_df": 0.05,
+              "min_weight": 1,
+              "top_n": 300
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "dataset_id",
+          "relation"
+        ],
+        "title": "CustomRunCreate"
+      },
       "DatasetFileOut": {
         "properties": {
           "id": {
@@ -928,6 +1138,83 @@
         "title": "DatasetProfileOut",
         "description": "Schema, sample rows and statistics (see pipeline/profile.py); null until ready."
       },
+      "EntityOption": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "author",
+              "institution",
+              "corresponding_institution",
+              "country",
+              "organization",
+              "journal",
+              "funder",
+              "wos_category",
+              "research_area",
+              "article"
+            ],
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "many_per_article": {
+            "type": "boolean",
+            "title": "Many Per Article"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Why it isn't available in this dataset"
+          },
+          "links": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "same_article",
+                "keywords",
+                "author_keywords",
+                "keywords_plus",
+                "wos_categories",
+                "research_areas",
+                "funders",
+                "organizations",
+                "authors",
+                "article_title",
+                "journal",
+                "abstract",
+                "funding_text"
+              ]
+            },
+            "type": "array",
+            "title": "Links",
+            "description": "Link fields this entity can be linked by"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "many_per_article",
+          "available",
+          "reason",
+          "links"
+        ],
+        "title": "EntityOption"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1051,6 +1338,79 @@
         ],
         "title": "InstitutionKeywordRunCreate"
       },
+      "LinkOption": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "same_article",
+              "keywords",
+              "author_keywords",
+              "keywords_plus",
+              "wos_categories",
+              "research_areas",
+              "funders",
+              "organizations",
+              "authors",
+              "article_title",
+              "journal",
+              "abstract",
+              "funding_text"
+            ],
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "same_article",
+              "list",
+              "string"
+            ],
+            "title": "Kind"
+          },
+          "models": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "word_matching",
+                "word_overlap",
+                "character_similarity"
+              ]
+            },
+            "type": "array",
+            "title": "Models"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "kind",
+          "models",
+          "available",
+          "reason"
+        ],
+        "title": "LinkOption"
+      },
       "MessageOut": {
         "properties": {
           "detail": {
@@ -1063,6 +1423,47 @@
           "detail"
         ],
         "title": "MessageOut"
+      },
+      "ModelOption": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "word_matching",
+              "word_overlap",
+              "character_similarity"
+            ],
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "threshold_default": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold Default",
+            "description": "Default for 'threshold' with this model (string similarity only)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "description",
+          "threshold_default"
+        ],
+        "title": "ModelOption"
       },
       "Network": {
         "properties": {
@@ -1220,6 +1621,42 @@
           "role"
         ],
         "title": "NetworkNode"
+      },
+      "NetworkOptionsOut": {
+        "properties": {
+          "entities": {
+            "items": {
+              "$ref": "#/components/schemas/EntityOption"
+            },
+            "type": "array",
+            "title": "Entities"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/LinkOption"
+            },
+            "type": "array",
+            "title": "Links"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ModelOption"
+            },
+            "type": "array",
+            "title": "Models"
+          },
+          "defaults": {
+            "$ref": "#/components/schemas/CustomParams"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entities",
+          "links",
+          "models",
+          "defaults"
+        ],
+        "title": "NetworkOptionsOut"
       },
       "PasswordResetConfirm": {
         "properties": {

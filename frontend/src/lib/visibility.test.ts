@@ -119,3 +119,31 @@ describe("edge attribute search", () => {
     });
   });
 });
+
+describe("Link weight range", () => {
+  it("hides links outside the range but keeps the nodes", () => {
+    expect(visible({ weightRange: { min: 2, max: 2 } })).toEqual({
+      nodes: ["a", "b", "c", "d", "z"],
+      edges: ["a-b"],
+    });
+  });
+
+  it("null shows every weight", () => {
+    expect(visible({ weightRange: null }).edges).toEqual(["a-b", "a-c", "b-c", "c-d"]);
+  });
+
+  it("with 'hide nodes without visible links', drops nodes the range left unlinked", () => {
+    expect(visible({ weightRange: { min: 2, max: 5 }, hideUnlinked: true })).toEqual({
+      nodes: ["a", "b"],
+      edges: ["a-b"],
+    });
+  });
+
+  it("'hide nodes without visible links' also hides nodes that never had links", () => {
+    expect(visible({ hideUnlinked: true }).nodes).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("combines with the Relationship checkboxes", () => {
+    expect(visible({ relations: new Set(), hideUnlinked: true })).toEqual({ nodes: [], edges: [] });
+  });
+});

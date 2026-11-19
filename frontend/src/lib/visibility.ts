@@ -4,11 +4,17 @@
 // repository; see git history), same rules:
 //
 // - Group checkboxes: a node is hidden when its team is unchecked.
-// - Relationship checkboxes: hide EDGES of unchecked types only, never nodes.
+// - Relationship types: hide EDGES of unchecked types only, never nodes. The
+//   panel no longer offers this control (every type stays checked); the rule
+//   stays for callers that set it.
 // - Node attribute search: hides nodes that don't match (and so their edges).
 // - Edge attribute search: hides non-matching edges, and - only while it is
 //   active - nodes left with no visible edge. Nodes with no edges at all in the
 //   dataset are exempt (an edge filter can't judge them).
+// - Link weight range: hides links whose weight is outside [min, max], never
+//   nodes (null = every weight).
+// - "Hide nodes without visible links": while on, a node is hidden when none of
+//   its links is visible - including nodes that had no links at all.
 // - Edge visibility looks at the endpoints' OWN filters, not their cascaded
 //   visibility, which keeps the node <-> edge rules acyclic.
 // - Name search is NOT here: it highlights, it never hides.
@@ -30,6 +36,10 @@ export interface FilterState {
   nodeAttr: readonly AttrFilter[];
   /** Applied edge attribute filters (rows combine with AND). */
   edgeAttr: readonly AttrFilter[];
+  /** Links shown by weight, inclusive; null = every weight. */
+  weightRange: { min: number; max: number } | null;
+  /** Hide nodes that are left without a visible link. */
+  hideUnlinked: boolean;
 }
 
 /** Everything visible: all teams and relations checked, no attribute filters. */
@@ -39,6 +49,8 @@ export function initialFilterState(network: Network): FilterState {
     relations: new Set(network.edges.map((e) => e.type)),
     nodeAttr: [],
     edgeAttr: [],
+    weightRange: null,
+    hideUnlinked: false,
   };
 }
 
@@ -97,6 +109,10 @@ export function computeVisibility(network: Network, state: FilterState): Visibil
     return ok;
   };
 
+  const range = state.weightRange;
+  const inWeightRange = (e: NetworkEdge): boolean =>
+    !range || ((e.weight ?? 1) >= range.min && (e.weight ?? 1) <= range.max);
+
   const edgeCache = new Map<NetworkEdge, boolean>();
   const isEdgeVisible = (e: NetworkEdge): boolean => {
     let ok = edgeCache.get(e);
@@ -105,6 +121,7 @@ export function computeVisibility(network: Network, state: FilterState): Visibil
       const tgt = nodeById.get(e.target);
       ok =
         state.relations.has(e.type) &&
+        inWeightRange(e) &&
         !!src &&
         !!tgt &&
         passesOwnFilters(src) &&
@@ -117,6 +134,7 @@ export function computeVisibility(network: Network, state: FilterState): Visibil
 
   const isNodeVisible = (n: NetworkNode): boolean => {
     if (!passesOwnFilters(n)) return false;
+    if (state.hideUnlinked) return (incident.get(n.id) ?? []).some(isEdgeVisible);
     if (state.edgeAttr.length === 0) return true;
     const edges = incident.get(n.id);
     if (!edges || edges.length === 0) return true;

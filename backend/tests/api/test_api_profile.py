@@ -49,3 +49,30 @@ def test_listing_datasets_does_not_load_profiles(client, db, settings, synthetic
     listed = client.get("/api/datasets").json()[0]
     assert listed["profile_status"] == "ready"
     assert "profile" not in listed  # only via /profile
+
+
+def test_network_options_follow_the_profile(client, db, settings, synthetic_reader):
+    ds = upload(client).json()
+    pending = client.get(f"/api/datasets/{ds['id']}/network-options").json()
+    assert all(e["available"] for e in pending["entities"])  # no profile yet: offer everything
+
+    profile_next_dataset(db, settings)
+    options = client.get(f"/api/datasets/{ds['id']}/network-options").json()
+    entities = {e["key"]: e for e in options["entities"]}
+    links = {lk["key"]: lk for lk in options["links"]}
+    assert entities["author"]["available"] and links["keywords"]["available"]
+    assert not entities["funder"]["available"]
+    assert "Funding Orgs" in entities["funder"]["reason"]
+    assert "journal" not in entities["journal"]["links"]  # not by its own field
+    assert "same_article" not in entities["journal"]["links"]  # one per article
+    assert links["article_title"]["models"] == ["word_overlap", "character_similarity"]
+    models = {m["key"]: m for m in options["models"]}
+    assert models["character_similarity"]["threshold_default"] == 0.9
+    assert options["defaults"]["entity"] == "institution"
+
+
+def test_network_options_are_private(make_client, client):
+    ds = upload(client).json()
+    other = make_client()
+    register(other, "bob@example.org")
+    assert other.get(f"/api/datasets/{ds['id']}/network-options").status_code == 404

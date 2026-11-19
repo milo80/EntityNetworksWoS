@@ -185,6 +185,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/{dataset_id}/network-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Network Options
+         * @description What a custom network can be built from: entities, link fields and models.
+         *
+         *     Availability comes from the dataset's profile (column fill). While the
+         *     profile isn't ready, everything is offered.
+         */
+        get: operations["get_network_options_api_datasets__dataset_id__network_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs": {
         parameters: {
             query?: never;
@@ -331,6 +354,108 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** CustomParams */
+        CustomParams: {
+            /**
+             * Max Authors
+             * @description Drop articles with more authors
+             * @default 15
+             */
+            max_authors: number;
+            /**
+             * Max Team Categories
+             * @default 12
+             */
+            max_team_categories: number;
+            /**
+             * Min Team Size
+             * @default 2
+             */
+            min_team_size: number;
+            /**
+             * Entity
+             * @description What the nodes are
+             * @default institution
+             * @enum {string}
+             */
+            entity: "author" | "institution" | "corresponding_institution" | "country" | "organization" | "journal" | "funder" | "wos_category" | "research_area" | "article";
+            /**
+             * Link
+             * @description The field that links them
+             * @default keywords
+             * @enum {string}
+             */
+            link: "same_article" | "keywords" | "author_keywords" | "keywords_plus" | "wos_categories" | "research_areas" | "funders" | "organizations" | "authors" | "article_title" | "journal" | "abstract" | "funding_text";
+            /**
+             * Model
+             * @description How the field is compared
+             * @default word_matching
+             * @enum {string}
+             */
+            model: "word_matching" | "word_overlap" | "character_similarity";
+            /**
+             * Min Shared
+             * @description Word matching: shared items needed
+             * @default 3
+             */
+            min_shared: number;
+            /**
+             * Max Item Df
+             * @description Word matching: ignore items in more than this share
+             * @default 0.05
+             */
+            max_item_df: number;
+            /**
+             * Threshold
+             * @description String similarity: minimum similarity (0-1)
+             * @default 0.5
+             */
+            threshold: number;
+            /**
+             * Max Word Df
+             * @description String similarity: ignore words in more than this share
+             * @default 0.05
+             */
+            max_word_df: number;
+            /**
+             * Min Weight
+             * @description Keep links with at least this many matched article pairs
+             * @default 1
+             */
+            min_weight: number;
+            /**
+             * Top N
+             * @default 300
+             */
+            top_n: number;
+        };
+        /** CustomRunCreate */
+        CustomRunCreate: {
+            /** Dataset Id */
+            dataset_id: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            relation: "custom";
+            /**
+             * @default {
+             *       "max_authors": 15,
+             *       "max_team_categories": 12,
+             *       "min_team_size": 2,
+             *       "entity": "institution",
+             *       "link": "keywords",
+             *       "model": "word_matching",
+             *       "min_shared": 3,
+             *       "max_item_df": 0.05,
+             *       "threshold": 0.5,
+             *       "max_word_df": 0.05,
+             *       "min_weight": 1,
+             *       "top_n": 300
+             *     }
+             */
+            params: components["schemas"]["CustomParams"];
+        };
         /** DatasetFileOut */
         DatasetFileOut: {
             /** Id */
@@ -379,6 +504,30 @@ export interface components {
             profile: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** EntityOption */
+        EntityOption: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "author" | "institution" | "corresponding_institution" | "country" | "organization" | "journal" | "funder" | "wos_category" | "research_area" | "article";
+            /** Label */
+            label: string;
+            /** Many Per Article */
+            many_per_article: boolean;
+            /** Available */
+            available: boolean;
+            /**
+             * Reason
+             * @description Why it isn't available in this dataset
+             */
+            reason: string | null;
+            /**
+             * Links
+             * @description Link fields this entity can be linked by
+             */
+            links: ("same_article" | "keywords" | "author_keywords" | "keywords_plus" | "wos_categories" | "research_areas" | "funders" | "organizations" | "authors" | "article_title" | "journal" | "abstract" | "funding_text")[];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -454,10 +603,48 @@ export interface components {
              */
             params: components["schemas"]["InstitutionKeywordParams"];
         };
+        /** LinkOption */
+        LinkOption: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "same_article" | "keywords" | "author_keywords" | "keywords_plus" | "wos_categories" | "research_areas" | "funders" | "organizations" | "authors" | "article_title" | "journal" | "abstract" | "funding_text";
+            /** Label */
+            label: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "same_article" | "list" | "string";
+            /** Models */
+            models: ("word_matching" | "word_overlap" | "character_similarity")[];
+            /** Available */
+            available: boolean;
+            /** Reason */
+            reason: string | null;
+        };
         /** MessageOut */
         MessageOut: {
             /** Detail */
             detail: string;
+        };
+        /** ModelOption */
+        ModelOption: {
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "word_matching" | "word_overlap" | "character_similarity";
+            /** Label */
+            label: string;
+            /** Description */
+            description: string;
+            /**
+             * Threshold Default
+             * @description Default for 'threshold' with this model (string similarity only)
+             */
+            threshold_default: number | null;
         };
         /** Network */
         Network: {
@@ -513,6 +700,16 @@ export interface components {
             attr?: {
                 [key: string]: string | number | string[];
             } | null;
+        };
+        /** NetworkOptionsOut */
+        NetworkOptionsOut: {
+            /** Entities */
+            entities: components["schemas"]["EntityOption"][];
+            /** Links */
+            links: components["schemas"]["LinkOption"][];
+            /** Models */
+            models: components["schemas"]["ModelOption"][];
+            defaults: components["schemas"]["CustomParams"];
         };
         /** PasswordResetConfirm */
         PasswordResetConfirm: {
@@ -951,6 +1148,37 @@ export interface operations {
             };
         };
     };
+    get_network_options_api_datasets__dataset_id__network_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkOptionsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_runs_api_runs_get: {
         parameters: {
             query?: {
@@ -991,7 +1219,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AuthorRunCreate"] | components["schemas"]["InstitutionKeywordRunCreate"];
+                "application/json": components["schemas"]["AuthorRunCreate"] | components["schemas"]["InstitutionKeywordRunCreate"] | components["schemas"]["CustomRunCreate"];
             };
         };
         responses: {

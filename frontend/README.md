@@ -28,16 +28,16 @@ proxy elsewhere. CI runs `lint`, `typecheck`, `test`, `build`, checks that
 
 ## Layout
 
-| Path                       |                                                                          |
-| -------------------------- | ------------------------------------------------------------------------ |
-| `src/api/`                 | typed client (`client.ts`) + generated types (`schema.d.ts`, don't edit) |
-| `src/lib/visibility.ts`    | filter rules - the single source of truth for graph, Readable and JSON   |
-| `src/lib/attrSearch.ts`    | attribute-search row editing                                             |
-| `src/lib/colors.ts`        | group colors (validated palette, see docs/design-notes.md)               |
-| `src/components/explorer/` | Explorer: filters, Cytoscape graph, details, resizable panels            |
-| `src/pages/`               | Login, password reset, Datasets, Dataset, Dataset data, Explorer pages   |
-| `src/test/`                | test setup and the fake backend (`mockApi.ts`)                           |
-| `e2e/`                     | Playwright browser tests (`playwright.config.ts`)                        |
+| Path                       |                                                                                             |
+| -------------------------- | ------------------------------------------------------------------------------------------- |
+| `src/api/`                 | typed client (`client.ts`) + generated types (`schema.d.ts`, don't edit)                    |
+| `src/lib/visibility.ts`    | filter rules - the single source of truth for graph, Readable and JSON                      |
+| `src/lib/attrSearch.ts`    | attribute-search row editing                                                                |
+| `src/lib/colors.ts`        | group colors (validated palette, see docs/design-notes.md)                                  |
+| `src/components/explorer/` | Explorer: filters (incl. the link weight range), Cytoscape graph, details, resizable panels |
+| `src/pages/`               | Login, password reset, Datasets, Dataset, Dataset data, Explorer pages                      |
+| `src/test/`                | test setup and the fake backend (`mockApi.ts`)                                              |
+| `e2e/`                     | Playwright browser tests (`playwright.config.ts`)                                           |
 
 ## Tests
 

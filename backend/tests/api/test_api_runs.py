@@ -37,6 +37,10 @@ def _create_run(client, dataset_id, relation="author", params=None):
         {"relation": "institution_keywords", "params": {"max_keyword_df": 0}},
         {"relation": "author", "params": {"max_keyword_df": 0.5}},  # wrong relation's param
         {"relation": "coauthor_magic"},
+        {"relation": "custom", "params": {"entity": "planet"}},
+        {"relation": "custom", "params": {"link": "abstract", "model": "character_similarity"}},
+        {"relation": "custom", "params": {"entity": "journal", "link": "same_article"}},
+        {"relation": "custom", "params": {"threshold": 0}},
     ],
 )
 def test_invalid_run_requests(client, dataset, body):
@@ -166,3 +170,28 @@ def test_only_one_worker_can_hold_the_lock(db, settings):
     again.close()
     first_engine.dispose()
     second_engine.dispose()
+
+
+def test_custom_run_is_built_by_the_worker(client, dataset, settings, db, synthetic_pipeline):
+    params = {"entity": "country", "link": "keywords", "min_shared": 1, "max_item_df": 1.0}
+    r = _create_run(client, dataset["id"], relation="custom", params=params)
+    assert r.status_code == 202, r.text
+    run = r.json()
+    assert run["params"]["model"] == "word_matching" and run["params"]["top_n"] == 300
+
+    run_once(db, settings)
+    status = client.get(f"/api/runs/{run['id']}").json()
+    assert status["status"] == "succeeded", status
+    network = validate_network(client.get(f"/api/runs/{run['id']}/network").content)
+    assert {e.type for e in network.edges} == {"shares_keywords_with"}
+
+
+def test_custom_run_with_missing_columns_fails_with_a_message(
+    client, dataset, settings, db, synthetic_pipeline
+):
+    params = {"entity": "funder", "link": "keywords"}  # the synthetic data has no Funding Orgs
+    run = _create_run(client, dataset["id"], relation="custom", params=params).json()
+    run_once(db, settings)
+    status = client.get(f"/api/runs/{run['id']}").json()
+    assert status["status"] == "failed"
+    assert "Funding Orgs" in status["error"]

@@ -24,6 +24,7 @@ from typing import Any
 from sqlalchemy import Connection, Engine, select, text, update
 from sqlalchemy.orm import Session
 
+from pipeline.custom import NetworkBuildError
 from pipeline.io import WoSReadError, read_wos_files
 from pipeline.profile import profile_dataset
 
@@ -91,7 +92,7 @@ def _user_facing_error(
     exc: Exception,
     generic: str = "The network could not be built from these files (see server logs)",
 ) -> str:
-    if isinstance(exc, WoSReadError):
+    if isinstance(exc, WoSReadError | NetworkBuildError):
         return str(exc)[:MAX_ERROR_LEN]
     if isinstance(exc, KeyError):  # a required WoS column is missing
         return f"The uploaded files are missing a required WoS column: {exc}"[:MAX_ERROR_LEN]

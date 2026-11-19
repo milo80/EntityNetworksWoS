@@ -1,13 +1,13 @@
 import type { GroupStyle } from "../../lib/colors";
-import { prettyTeam, prettyType, type Network } from "../../lib/network";
+import { prettyTeam, type Network } from "../../lib/network";
 import type { AttrFilter, FilterState } from "../../lib/visibility";
 import { AttrSearch } from "./AttrSearch";
+import { WeightRange } from "./WeightRange";
 
 interface Props {
   network: Network;
   teams: string[];
   teamCounts: Map<string, number>;
-  relations: string[];
   styles: Map<string, GroupStyle>;
   state: FilterState;
   onChange: (state: FilterState) => void;
@@ -16,6 +16,10 @@ interface Props {
   matchCount: number;
   nodeKeys: string[];
   edgeKeys: string[];
+  /** Weight of every link, for the weight range. */
+  weights: number[];
+  /** Links visible with all filters applied. */
+  shownLinks: number;
 }
 
 function toggled(set: ReadonlySet<string>, value: string, on: boolean): Set<string> {
@@ -34,7 +38,7 @@ export function FilterPanel(p: Props) {
     <>
       <div>
         <label htmlFor="name-search" className="group-title">
-          Find by name
+          Find by node name
         </label>
         <input
           id="name-search"
@@ -86,22 +90,15 @@ export function FilterPanel(p: Props) {
       </fieldset>
 
       <fieldset style={{ border: 0, margin: 0, padding: 0 }}>
-        <legend className="group-title">Relationship</legend>
-        {p.relations.map((rel) => (
-          <label key={rel} className="check">
-            <input
-              type="checkbox"
-              checked={state.relations.has(rel)}
-              onChange={(e) =>
-                onChange({ ...state, relations: toggled(state.relations, rel, e.target.checked) })
-              }
-            />
-            {prettyType(rel)}
-          </label>
-        ))}
-        <p className="small muted" style={{ marginTop: 4 }}>
-          Hides links only, not the people or institutions.
-        </p>
+        <legend className="group-title">Link weight</legend>
+        <WeightRange
+          weights={p.weights}
+          range={state.weightRange}
+          onRange={(weightRange) => onChange({ ...state, weightRange })}
+          hideUnlinked={state.hideUnlinked}
+          onHideUnlinked={(hideUnlinked) => onChange({ ...state, hideUnlinked })}
+          shown={p.shownLinks}
+        />
       </fieldset>
 
       <details open={attrActive > 0 || undefined}>

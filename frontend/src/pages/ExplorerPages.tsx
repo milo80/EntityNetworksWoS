@@ -5,7 +5,7 @@ import { api } from "../api/client";
 import { ErrorNote } from "../components/common";
 import { Explorer } from "../components/explorer/Explorer";
 import { useLocalNetwork } from "../lib/localNetwork";
-import { RELATION_LABEL } from "./DatasetPage";
+import { runTitle, useNetworkOptions } from "../lib/runLabels";
 
 export function RunExplorerPage() {
   const runId = Number(useParams().runId);
@@ -21,6 +21,9 @@ export function RunExplorerPage() {
     queryFn: () => api.getDataset(run.data!.dataset_id),
     enabled: !!run.data,
   });
+  const options = useNetworkOptions(
+    run.data?.relation === "custom" ? run.data.dataset_id : undefined,
+  );
 
   if (run.isError) return <PageMessage error={run.error} />;
   if (run.data && run.data.status !== "succeeded") {
@@ -34,7 +37,7 @@ export function RunExplorerPage() {
   if (network.isError) return <PageMessage error={network.error} />;
   if (!network.data || !run.data) return <p className="empty">Loading network…</p>;
 
-  const title = `${RELATION_LABEL[run.data.relation] ?? run.data.relation}${
+  const title = `${runTitle(run.data, options.data)}${
     dataset.data ? ` · ${dataset.data.name}` : ""
   }`;
   return (

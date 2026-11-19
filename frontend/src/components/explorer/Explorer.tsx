@@ -3,7 +3,7 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { groupStyles, orderedTeams, teamCounts } from "../../lib/colors";
-import { attrKeys, relationTypesOf, type Network } from "../../lib/network";
+import { attrKeys, type Network } from "../../lib/network";
 import { computeVisibility, initialFilterState, type FilterState } from "../../lib/visibility";
 import { DetailsPanel } from "./DetailsPanel";
 import { FilterPanel } from "./FilterPanel";
@@ -25,9 +25,9 @@ export function Explorer({ network, title, actions }: Props) {
   const styles = useMemo(() => groupStyles(network), [network]);
   const teams = useMemo(() => orderedTeams(network, styles), [network, styles]);
   const counts = useMemo(() => teamCounts(network), [network]);
-  const relations = useMemo(() => relationTypesOf(network), [network]);
   const nodeKeys = useMemo(() => attrKeys(network.nodes), [network]);
   const edgeKeys = useMemo(() => attrKeys(network.edges), [network]);
+  const weights = useMemo(() => network.edges.map((e) => e.weight ?? 1), [network]);
   const nodeById = useMemo(() => new Map(network.nodes.map((n) => [n.id, n])), [network]);
   const edgeIndex = useMemo(() => new Map(network.edges.map((e, i) => [e, i])), [network]);
 
@@ -80,7 +80,6 @@ export function Explorer({ network, title, actions }: Props) {
           network={network}
           teams={teams}
           teamCounts={counts}
-          relations={relations}
           styles={styles}
           state={filters}
           onChange={setFilters}
@@ -89,6 +88,8 @@ export function Explorer({ network, title, actions }: Props) {
           matchCount={matchCount}
           nodeKeys={nodeKeys}
           edgeKeys={edgeKeys}
+          weights={weights}
+          shownLinks={visibleEdges.length}
         />
       </aside>
       {widths && (

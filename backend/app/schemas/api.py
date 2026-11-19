@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+
+from pipeline.custom import combination_problem
 
 # ---------------------------------------------------------------- auth
 
@@ -114,6 +116,65 @@ class InstitutionKeywordParams(_Params):
     max_team_categories: int = Field(12, ge=1, le=50)
 
 
+# Keys of the custom-network catalog (pipeline.custom); a test keeps them in sync.
+EntityName = Literal[
+    "author",
+    "institution",
+    "corresponding_institution",
+    "country",
+    "organization",
+    "journal",
+    "funder",
+    "wos_category",
+    "research_area",
+    "article",
+]
+LinkName = Literal[
+    "same_article",
+    "keywords",
+    "author_keywords",
+    "keywords_plus",
+    "wos_categories",
+    "research_areas",
+    "funders",
+    "organizations",
+    "authors",
+    "article_title",
+    "journal",
+    "abstract",
+    "funding_text",
+]
+ModelName = Literal["word_matching", "word_overlap", "character_similarity"]
+
+
+class CustomParams(_Params):
+    entity: EntityName = Field("institution", description="What the nodes are")
+    link: LinkName = Field("keywords", description="The field that links them")
+    model: ModelName = Field("word_matching", description="How the field is compared")
+    min_shared: int = Field(3, ge=1, le=50, description="Word matching: shared items needed")
+    max_item_df: float = Field(
+        0.05, gt=0, le=1, description="Word matching: ignore items in more than this share"
+    )
+    threshold: float = Field(
+        0.5, gt=0, le=1, description="String similarity: minimum similarity (0-1)"
+    )
+    max_word_df: float = Field(
+        0.05, gt=0, le=1, description="String similarity: ignore words in more than this share"
+    )
+    min_weight: int = Field(
+        1, ge=1, le=1000, description="Keep links with at least this many matched article pairs"
+    )
+    top_n: int = Field(300, ge=10, le=2000)
+    max_team_categories: int = Field(12, ge=1, le=50)
+
+    @model_validator(mode="after")
+    def _valid_combination(self) -> CustomParams:
+        problem = combination_problem(self.entity, self.link, self.model)
+        if problem:
+            raise ValueError(problem)
+        return self
+
+
 class AuthorRunCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     dataset_id: int
@@ -128,14 +189,60 @@ class InstitutionKeywordRunCreate(BaseModel):
     params: InstitutionKeywordParams = InstitutionKeywordParams()
 
 
+class CustomRunCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    dataset_id: int
+    relation: Literal["custom"]
+    params: CustomParams = CustomParams()
+
+
 RunCreate = Annotated[
-    AuthorRunCreate | InstitutionKeywordRunCreate, Field(discriminator="relation")
+    AuthorRunCreate | InstitutionKeywordRunCreate | CustomRunCreate,
+    Field(discriminator="relation"),
 ]
 
 PARAMS_BY_RELATION: dict[str, type[_Params]] = {
     "author": AuthorParams,
     "institution_keywords": InstitutionKeywordParams,
+    "custom": CustomParams,
 }
+
+
+# ---------------------------------------------------------------- custom network options
+
+
+class EntityOption(BaseModel):
+    key: EntityName
+    label: str
+    many_per_article: bool
+    available: bool
+    reason: str | None = Field(description="Why it isn't available in this dataset")
+    links: list[LinkName] = Field(description="Link fields this entity can be linked by")
+
+
+class LinkOption(BaseModel):
+    key: LinkName
+    label: str
+    kind: Literal["same_article", "list", "string"]
+    models: list[ModelName]
+    available: bool
+    reason: str | None
+
+
+class ModelOption(BaseModel):
+    key: ModelName
+    label: str
+    description: str
+    threshold_default: float | None = Field(
+        description="Default for 'threshold' with this model (string similarity only)"
+    )
+
+
+class NetworkOptionsOut(BaseModel):
+    entities: list[EntityOption]
+    links: list[LinkOption]
+    models: list[ModelOption]
+    defaults: CustomParams
 
 
 class RunOut(BaseModel):
