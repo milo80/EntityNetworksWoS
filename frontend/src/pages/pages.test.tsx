@@ -378,6 +378,127 @@ describe("datasets", () => {
     expect(await screen.findByText("Journal linked by Article title")).toBeInTheDocument();
   });
 
+  it("shows the chosen node type's and link field's catalog values beside a custom build", async () => {
+    // Country with 15 values: the build form shows them all (up to 20), the data page 10.
+    const many = structuredClone(profile);
+    const country = many.stats.catalog.find((e) => e.key === "country")!;
+    country.top = Array.from({ length: 15 }, (_, i) => ({
+      value: `Country ${i + 1}`,
+      count: 15 - i,
+    }));
+    const entity = (key: string, label: string, links: string[]) => ({
+      key,
+      label,
+      many_per_article: true,
+      available: true,
+      reason: null,
+      links,
+    });
+    const link = (key: string, label: string, kind: string, models: string[]) => ({
+      key,
+      label,
+      kind,
+      models,
+      available: true,
+      reason: null,
+    });
+    const OPTIONS = {
+      entities: [
+        entity("institution", "Institution (all authors)", ["keywords", "authors", "same_article"]),
+        entity("country", "Country", ["keywords", "same_article"]),
+        entity("article", "Article", ["keywords", "article_title"]),
+      ],
+      links: [
+        link("same_article", "Same article", "same_article", []),
+        link("keywords", "Keywords", "list", ["word_matching"]),
+        link("authors", "Authors", "list", ["word_matching"]),
+        link("article_title", "Article title", "string", ["word_overlap"]),
+      ],
+      models: [
+        { key: "word_matching", label: "Word matching", description: "", threshold_default: null },
+        { key: "word_overlap", label: "Word overlap", description: "", threshold_default: 0.4 },
+      ],
+      defaults: {
+        entity: "institution",
+        link: "keywords",
+        model: "word_matching",
+        min_shared: 2,
+        max_item_df: 0.12,
+        threshold: 0.4,
+        max_word_df: 0.05,
+        min_weight: 1,
+        top_n: 300,
+        max_authors: 15,
+        max_team_categories: 12,
+        min_team_size: 2,
+      },
+    };
+    mockApi({
+      "GET /auth/me": () => ({ body: SESSION }),
+      "GET /datasets": () => ({ body: [DATASET] }),
+      "GET /datasets/7": () => ({ body: DATASET }),
+      "GET /datasets/7/network-options": () => ({ body: OPTIONS }),
+      "GET /datasets/7/profile": () => ({ body: { status: "ready", error: null, profile: many } }),
+      "GET /runs?dataset_id=7": () => ({ body: [] }),
+    });
+    const user = renderApp("/datasets/7");
+
+    const form = await screen.findByRole("form", { name: "Build network" });
+    // Not for the fixed relationships.
+    await user.selectOptions(within(form).getByLabelText("Relationship"), "author");
+    expect(screen.queryByRole("complementary", { name: "Node values" })).toBeNull();
+
+    await user.selectOptions(within(form).getByLabelText("Relationship"), "custom");
+    const nodeSide = await screen.findByRole("complementary", { name: "Node values" });
+    const linkSide = screen.getByRole("complementary", { name: "Link field values" });
+    const values = (side: HTMLElement) =>
+      within(side)
+        .queryAllByRole("listitem")
+        .map((li) => li.querySelector(".bar-label")!.textContent);
+    expect(within(nodeSide).getByText("Nodes · fine-grained")).toBeInTheDocument();
+    expect(values(nodeSide)).toEqual(["Mayo Clin", "Univ Parma", "Peking Univ", "Fudan Univ"]);
+    expect(
+      within(linkSide).getByRole("heading", { name: /Keywords \(author keywords/ }),
+    ).toBeInTheDocument();
+    expect(values(linkSide)).toContain("fetal ultrasound");
+
+    // The Nodes options are grouped like the catalog, and the select shows its group color.
+    const nodes = within(form).getByLabelText("Nodes");
+    expect(
+      within(nodes)
+        .getAllByRole("group")
+        .map((g) => g.getAttribute("label")),
+    ).toEqual(["Fine-grained", "Coarse", "Other"]);
+    expect(nodes).toHaveClass("select-marked");
+
+    await user.selectOptions(nodes, "country");
+    expect(within(nodeSide).getByText("Nodes · coarse")).toBeInTheDocument();
+    expect(values(nodeSide)).toHaveLength(15);
+
+    // A link field that is a node type's own column shows that node's values;
+    // co-occurrence and text fields describe what they contain.
+    await user.selectOptions(nodes, "institution");
+    const linkedBy = within(form).getByLabelText("Linked by");
+    await user.selectOptions(linkedBy, "authors");
+    expect(within(linkSide).getByText(/same values as Author/)).toBeInTheDocument();
+    expect(values(linkSide)).toContain("Rossi, Anna");
+    await user.selectOptions(linkedBy, "same_article");
+    expect(
+      within(linkSide).getByText(/Links nodes that appear on the same article/),
+    ).toBeInTheDocument();
+    await user.selectOptions(nodes, "article");
+    expect(within(nodeSide).getByText("One node per article.")).toBeInTheDocument();
+    await user.selectOptions(within(form).getByLabelText("Linked by"), "article_title");
+    expect(within(linkSide).getByText(/^Text, typically \d+ words/)).toBeInTheDocument();
+
+    // The data page keeps the top 10.
+    await user.click(within(screen.getByRole("main")).getByRole("link", { name: "View data" }));
+    const coarse = await screen.findByRole("region", { name: "Nodes · coarse" });
+    expect(
+      within(within(coarse).getByRole("region", { name: "Country" })).getAllByRole("listitem"),
+    ).toHaveLength(10);
+  });
+
   it("shows the data page from a real pipeline profile", async () => {
     mockApi({
       "GET /auth/me": () => ({ body: SESSION }),

@@ -118,3 +118,20 @@ def test_catalog_skips_node_types_without_their_columns():
     keys = [e["key"] for e in profile_dataset(df)["stats"]["catalog"]]
     assert "institution" not in keys and "country" not in keys
     assert "author" in keys and "journal" in keys
+
+
+def test_catalog_lists_the_top_20_values():
+    """The build form shows 20 values per node type and link field."""
+    n = 30
+    df = pd.DataFrame(
+        {
+            "UT (Unique WOS ID)": [f"WOS:{i}" for i in range(n)],
+            "Source Title": [f"Journal {i}" for i in range(n)],
+            "Author Keywords": [f"kw {i}; common" for i in range(n)],
+        }
+    )
+    stats = profile_dataset(df)["stats"]
+    journal = next(e for e in stats["catalog"] if e["key"] == "journal")
+    assert journal["distinct"] == n and len(journal["top"]) == 20
+    keywords = next(e for e in stats["link_catalog"] if e["key"] == "keywords")
+    assert len(keywords["top"]) == 20 and keywords["top"][0] == {"value": "common", "count": n}

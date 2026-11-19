@@ -361,6 +361,14 @@ nothing pending it recomputes one 'ready' profile older than PROFILE_VERSION
 in place (the old one stays visible meanwhile; a failure is remembered in
 refresh_failed_version and not retried), so existing datasets update without
 a migration.
+Profile version 4 keeps the top 20 values per catalog entry (CATALOG_TOP_N;
+other lists stay at 10). The data page still shows 10; the Create network form
+shows the 20 beside a Custom build: the chosen node type's values on the left,
+the chosen link field's on the right (a field that is a node type's own column
+shows that node's values; co-occurrence and text fields say what they contain),
+stacked under 1100px. The Nodes select groups its options like the catalog
+(Fine-grained, Coarse, Other) and both selects carry their group's color as a
+left border; the group names are the primary encoding, color the secondary.
 
 Bundling: the Explorer (Cytoscape, ~146 KB gzip) is lazy-loaded; the rest of the
 app is ~100 KB gzip.

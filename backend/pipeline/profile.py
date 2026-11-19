@@ -18,11 +18,13 @@ from .custom import ENTITIES, LINKS, MODELS
 from .institutions import ARTICLE_ID, parse_reprint_address_block, pick_anchor_institution
 from .keywords import normalize_keyword, parse_keyword_columns
 
-PROFILE_VERSION = 3
+PROFILE_VERSION = 4
 """Bump when the profile gains or changes content: the worker re-profiles older ones."""
 SAMPLE_ROWS = 10
 MAX_CELL_CHARS = 200
 TOP_N = 10
+CATALOG_TOP_N = 20
+"""Top values per catalog entry: the build form shows 20 beside its selects, the data page 10."""
 MEGA_PAPER_AUTHORS = 15
 
 log = logging.getLogger(__name__)
@@ -150,7 +152,8 @@ def _catalog(df: pd.DataFrame, authors: pd.Series | None) -> list[dict]:
                 "distinct": len(counter),
                 "articles_with_pct": _pct(sum(1 for row in per_article if row), len(df)),
                 "top": [
-                    {"value": shown[eid], "count": int(c)} for eid, c in counter.most_common(TOP_N)
+                    {"value": shown[eid], "count": int(c)}
+                    for eid, c in counter.most_common(CATALOG_TOP_N)
                 ],
             }
         )
@@ -188,7 +191,7 @@ def _link_catalog(df: pd.DataFrame) -> list[dict]:
             # second top list.
             same = [k for k, e in ENTITIES.items() if set(e.columns) == set(spec.columns)]
             entry["same_as_node"] = same[0] if same else None
-            entry["top"] = [] if same else _counts(counter)
+            entry["top"] = [] if same else _counts(counter, CATALOG_TOP_N)
         elif spec.kind == "string":
             words = [len(vs[0].split()) for vs in values if vs]
             entry["median_words"] = int(pd.Series(words).median()) if words else None

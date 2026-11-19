@@ -2,6 +2,18 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 
 import { api, type NetworkOptions, type Relation, type RunCreate } from "../api/client";
+import {
+  BarList,
+  GROUPS,
+  groupStyle,
+  linkContents,
+  linkNote,
+  nodeNote,
+  readyProfile,
+  useProfile,
+  type CatalogEntry,
+  type LinkEntry,
+} from "../components/catalog";
 import { ErrorNote } from "../components/common";
 import { clearFormState, loadFormState, saveFormState } from "../lib/buildFormState";
 import { RELATION_LABEL, useNetworkOptions } from "../lib/runLabels";
@@ -188,6 +200,18 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
   const model = opts?.models.find((m) => m.key === custom.model);
   const linksForEntity = opts?.links.filter((l) => entity?.links.includes(l.key)) ?? [];
 
+  // The data page's catalog: the chosen node type's and link field's values
+  // beside the form, and its group color on the selects.
+  const profile = readyProfile(useProfile(datasetId).data);
+  const nodeCatalog = profile?.stats.catalog;
+  const nodeEntry = nodeCatalog?.find((e) => e.key === custom.entity);
+  const linkEntry = profile?.stats.link_catalog?.find((l) => l.key === custom.link);
+  const granularity = (key: string) => nodeCatalog?.find((e) => e.key === key)?.granularity;
+  const entityGroups = ENTITY_GROUPS.map(([label, test]) => ({
+    label,
+    options: (opts?.entities ?? []).filter((o) => test(o, granularity(o.key))),
+  })).filter((g) => g.options.length > 0);
+
   const active = fieldsFor(relation, link?.kind, custom.model);
   const problems: [string, string][] = active
     .map((name) => [name, fieldProblem(name, values[name])] as const)
@@ -328,7 +352,7 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
   const modelFields = active.filter((f) => f !== "topN" && f !== "maxAuthors");
   const sameArticle = link?.kind === "same_article";
 
-  return (
+  const form = (
     <form className="panel-form" onSubmit={onSubmit} aria-label="Build network" noValidate>
       <div className="panel-head">
         <h3 className="panel-title">Create network</h3>
@@ -393,16 +417,19 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
               >
                 <select
                   id="custom-entity"
-                  className="select"
+                  className={nodeEntry ? "select select-marked" : "select"}
+                  style={groupStyle(nodeEntry?.granularity)}
                   value={custom.entity}
                   aria-describedby="custom-entity-help"
                   onChange={(e) => chooseEntity(e.target.value)}
                 >
-                  {opts.entities.map((o) => (
-                    <option key={o.key} value={o.key} disabled={!o.available}>
-                      {o.available ? o.label : `${o.label} (not in this data)`}
-                    </option>
-                  ))}
+                  {nodeCatalog
+                    ? entityGroups.map((g) => (
+                        <optgroup key={g.label} label={g.label}>
+                          {g.options.map(entityOption)}
+                        </optgroup>
+                      ))
+                    : opts.entities.map(entityOption)}
                 </select>
               </ParamRow>
             )}
@@ -430,7 +457,8 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
                 >
                   <select
                     id="custom-link"
-                    className="select"
+                    className={linkEntry ? "select select-marked" : "select"}
+                    style={groupStyle(linkEntry ? "links" : undefined)}
                     value={custom.link}
                     aria-describedby="custom-link-help"
                     onChange={(e) => chooseLink(e.target.value)}
@@ -504,6 +532,112 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
       )}
       {create.isError && <ErrorNote error={create.error} />}
     </form>
+  );
+
+  // One wrapper always, so the form isn't remounted when the sides appear.
+  const sides = relation === "custom" && expanded && !!opts && !!nodeCatalog;
+  return (
+    <div className="build-layout">
+      {sides && <NodeValues entity={entity} entry={nodeEntry} />}
+      {form}
+      {sides && (
+        <LinkValues
+          link={link}
+          entry={linkEntry}
+          nodeEntry={nodeCatalog.find((e) => e.key === linkEntry?.same_as_node)}
+        />
+      )}
+    </div>
+  );
+}
+
+type EntityOption = NetworkOptions["entities"][number];
+
+const entityOption = (o: EntityOption) => (
+  <option key={o.key} value={o.key} disabled={!o.available}>
+    {o.available ? o.label : `${o.label} (not in this data)`}
+  </option>
+);
+
+/** The Nodes select's option groups, named like the data page's catalog groups. */
+const ENTITY_GROUPS: [
+  string,
+  (o: EntityOption, g: CatalogEntry["granularity"] | undefined) => boolean,
+][] = [
+  [GROUPS.fine.option, (_, g) => g === "fine"],
+  [GROUPS.coarse.option, (_, g) => g === "coarse"],
+  ["Other", (o, g) => g === undefined && o.available],
+  ["Not in this data", (o, g) => g === undefined && !o.available],
+];
+
+/** Beside the form: the chosen node type's top values (left). */
+function NodeValues({ entity, entry }: { entity?: EntityOption; entry?: CatalogEntry }) {
+  return (
+    <aside className="catalog-side" aria-label="Node values" style={groupStyle(entry?.granularity)}>
+      <SideHead title={entry ? GROUPS[entry.granularity].title : "Nodes"} marked={!!entry} />
+      {entry ? (
+        <BarList
+          level={4}
+          idPrefix="side-"
+          title={entry.label}
+          note={nodeNote(entry)}
+          items={entry.top}
+        />
+      ) : (
+        <p className="small muted">
+          {entity?.key === "article"
+            ? "One node per article."
+            : "No values to show for this node type."}
+        </p>
+      )}
+    </aside>
+  );
+}
+
+/** Beside the form: what the chosen link field contains (right). */
+function LinkValues({
+  link,
+  entry,
+  nodeEntry,
+}: {
+  link?: NetworkOptions["links"][number];
+  entry?: LinkEntry;
+  nodeEntry?: CatalogEntry;
+}) {
+  const items = entry?.top?.length ? entry.top : nodeEntry?.top;
+  return (
+    <aside className="catalog-side" aria-label="Link field values" style={groupStyle("links")}>
+      <SideHead title={GROUPS.links.title} marked />
+      {entry && items ? (
+        <BarList
+          level={4}
+          idPrefix="side-"
+          title={entry.label}
+          note={
+            nodeEntry ? `${linkNote(entry)} · same values as ${nodeEntry.label}` : linkNote(entry)
+          }
+          items={items}
+        />
+      ) : (
+        <section>
+          <h4>{entry?.label ?? link?.label}</h4>
+          <p className="small muted">
+            {entry
+              ? `${linkContents(entry)} · on ${entry.articles_with_pct}% of articles`
+              : "No values to show for this field."}
+          </p>
+        </section>
+      )}
+    </aside>
+  );
+}
+
+function SideHead({ title, marked }: { title: string; marked: boolean }) {
+  return (
+    <h3 className="catalog-side-head">
+      {marked && <span className="catalog-dot" aria-hidden="true" />}
+      {title}
+    </h3>
   );
 }
 

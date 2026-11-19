@@ -44,7 +44,8 @@ export function DatasetPage() {
   const size = ds.files.reduce((s, f) => s + f.size_bytes, 0);
 
   return (
-    <div className="page">
+    // Wide: a custom network shows catalog values on both sides of the form.
+    <div className="page page-wide">
       <div className="page-header">
         <div>
           <Link to="/datasets" className="back">

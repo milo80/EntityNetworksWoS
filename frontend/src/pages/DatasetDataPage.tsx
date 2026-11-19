@@ -1,71 +1,30 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, Navigate, useParams } from "react-router";
 
 import { api, type Dataset } from "../api/client";
-import { GROUP_PALETTE } from "../lib/colors";
+import {
+  BarList,
+  GROUPS,
+  barsId,
+  groupStyle,
+  linkContents,
+  linkNote,
+  nodeNote,
+  readyProfile,
+  useProfile,
+  type CatalogEntry,
+  type CatalogGroupName,
+  type ColumnInfo,
+  type Count,
+  type LinkEntry,
+  type Profile,
+} from "../components/catalog";
 import { ErrorNote, Status, formatDate, formatNumber } from "../components/common";
 import { DATASETS_KEY } from "./DatasetsPage";
 
-// Shape of pipeline/profile.py's output (served as a free-form object).
-interface Count {
-  value: string;
-  count: number;
-}
-interface ColumnInfo {
-  name: string;
-  type: string;
-  non_empty: number;
-  non_empty_pct: number;
-  distinct: number;
-  example: unknown;
-}
-interface KeywordStats {
-  articles_with_pct: number;
-  unique: number;
-  top: Count[];
-}
-interface CatalogEntry {
-  key: string;
-  label: string;
-  granularity: "fine" | "coarse";
-  distinct: number;
-  articles_with_pct: number;
-  top: Count[];
-}
-interface LinkEntry {
-  key: string;
-  label: string;
-  kind: "same_article" | "list" | "string";
-  models: string[];
-  articles_with_pct: number;
-  distinct?: number;
-  top?: Count[];
-  same_as_node?: string | null;
-  median_words?: number | null;
-}
-interface Profile {
-  schema: ColumnInfo[];
-  sample: { columns: string[]; rows: unknown[][] };
-  stats: {
-    articles: number;
-    columns: number;
-    duplicate_article_ids?: number;
-    publication_years?: { min: number | null; max: number | null; per_year: Count[] };
-    document_types?: Count[];
-    authors?: {
-      unique_names: number;
-      per_article: { median: number; max: number } | null;
-      articles_over_mega_threshold: number;
-      mega_threshold: number;
-    };
-    articles_with_orcid_pct?: number;
-    keywords?: Record<string, KeywordStats>;
-    corresponding_author?: { resolved_pct: number };
-    catalog?: CatalogEntry[];
-    link_catalog?: LinkEntry[];
-  };
-}
+/** The data page shows the top 10 of each catalog list (the build form 20). */
+const DATA_TOP = 10;
 
 const KEY_COLUMNS = [
   "UT (Unique WOS ID)",
@@ -83,11 +42,8 @@ export function DatasetDataPage() {
     queryKey: ["dataset", datasetId],
     queryFn: () => api.getDataset(datasetId),
   });
-  const profile = useQuery({
-    queryKey: ["profile", datasetId],
-    queryFn: () => api.getProfile(datasetId),
-    refetchInterval: (q) => (q.state.data?.status === "pending" ? 2000 : false),
-  });
+  const profile = useProfile(datasetId);
+  const ready = readyProfile(profile.data);
 
   return (
     <div className="page page-wide data-layout">
@@ -114,9 +70,7 @@ export function DatasetDataPage() {
             The files could not be analysed: {profile.data.error}
           </p>
         )}
-        {profile.data?.status === "ready" && profile.data.profile && (
-          <ProfileView profile={profile.data.profile as unknown as Profile} />
-        )}
+        {ready && <ProfileView profile={ready} />}
       </div>
     </div>
   );
@@ -268,42 +222,13 @@ function Tile({ label, value }: { label: string; value: string }) {
   );
 }
 
-const GROUPS = {
-  fine: {
-    title: "Nodes · fine-grained",
-    short: "Fine-grained node",
-    color: GROUP_PALETTE[0],
-    help:
-      "Thousands of distinct values; most links between them have weight 1, so a " +
-      "minimum link weight of 2–3 thins the network a lot.",
-  },
-  coarse: {
-    title: "Nodes · coarse",
-    short: "Coarse node",
-    color: GROUP_PALETTE[1],
-    help:
-      "About a hundred values shared by many articles; links weigh hundreds, so expect " +
-      "a dense network and use the link weight filter in the Explorer.",
-  },
-  links: {
-    title: "Linked by",
-    short: "Link field",
-    color: GROUP_PALETTE[2],
-    help:
-      "The article field compared to decide whether two nodes are connected. List fields " +
-      "are matched item by item (word matching); text fields by similarity.",
-  },
-} as const;
-
-const barsId = (title: string) => `bars-${title.replace(/\W+/g, "-").toLowerCase()}`;
-
-function CatalogGroup({ group, children }: { group: keyof typeof GROUPS; children: ReactNode }) {
-  const { title, color, help } = GROUPS[group];
+function CatalogGroup({ group, children }: { group: CatalogGroupName; children: ReactNode }) {
+  const { title, help } = GROUPS[group];
   return (
     <section
       aria-labelledby={`catalog-${group}`}
       className="catalog-group"
-      style={{ "--group-color": color } as CSSProperties}
+      style={groupStyle(group)}
     >
       <div className="catalog-group-head">
         <h3 id={`catalog-${group}`}>
@@ -344,8 +269,8 @@ function Catalog({ nodes, links }: { nodes: CatalogEntry[]; links: LinkEntry[] }
                   key={e.key}
                   level={4}
                   title={e.label}
-                  note={`${GROUPS[g].short} · ${formatNumber(e.distinct)} distinct · on ${e.articles_with_pct}% of articles`}
-                  items={e.top}
+                  note={nodeNote(e)}
+                  items={e.top.slice(0, DATA_TOP)}
                 />
               ))}
             </div>
@@ -361,8 +286,8 @@ function Catalog({ nodes, links }: { nodes: CatalogEntry[]; links: LinkEntry[] }
                   key={l.key}
                   level={4}
                   title={l.label}
-                  note={`${GROUPS.links.short} · ${formatNumber(l.distinct ?? 0)} distinct · on ${l.articles_with_pct}% of articles`}
-                  items={l.top ?? []}
+                  note={linkNote(l)}
+                  items={(l.top ?? []).slice(0, DATA_TOP)}
                 />
               ))}
             </div>
@@ -386,7 +311,7 @@ function Catalog({ nodes, links }: { nodes: CatalogEntry[]; links: LinkEntry[] }
                     <td>{l.kind === "same_article" ? "Co-occurrence" : l.models.join(", ")}</td>
                     <td className="num">{l.articles_with_pct}%</td>
                     <td className="muted">
-                      {l.kind === "same_article" && "Links nodes that appear on the same article"}
+                      {l.kind !== "list" && linkContents(l)}
                       {l.kind === "list" && l.same_as_node && (
                         <>
                           {formatNumber(l.distinct ?? 0)} distinct · same values as{" "}
@@ -395,10 +320,6 @@ function Catalog({ nodes, links }: { nodes: CatalogEntry[]; links: LinkEntry[] }
                           </a>
                         </>
                       )}
-                      {l.kind === "string" &&
-                        (l.median_words != null
-                          ? `Text, typically ${formatNumber(l.median_words)} words`
-                          : "Text")}
                     </td>
                   </tr>
                 ))}
@@ -406,50 +327,6 @@ function Catalog({ nodes, links }: { nodes: CatalogEntry[]; links: LinkEntry[] }
             </table>
           </div>
         </CatalogGroup>
-      )}
-    </section>
-  );
-}
-
-function BarList({
-  title,
-  items,
-  note,
-  level = 2,
-}: {
-  title: string;
-  items: Count[];
-  note?: string;
-  level?: 2 | 4;
-}) {
-  const max = Math.max(1, ...items.map((i) => i.count));
-  const id = barsId(title);
-  const Heading = level === 2 ? "h2" : "h4";
-  return (
-    <section aria-labelledby={id}>
-      <div>
-        <Heading id={id}>{title}</Heading>
-        {note && <p className="small muted">{note}</p>}
-      </div>
-      {items.length === 0 ? (
-        <p className="small muted">No values.</p>
-      ) : (
-        <div className="bars" role="list">
-          {items.map((item) => (
-            <div key={item.value} role="listitem" style={{ display: "contents" }}>
-              <span className="bar-label" title={item.value}>
-                {item.value}
-              </span>
-              <span className="bar-track" aria-hidden="true">
-                <span
-                  className="bar"
-                  style={{ display: "block", width: `${(100 * item.count) / max}%` }}
-                />
-              </span>
-              <span className="bar-value">{formatNumber(item.count)}</span>
-            </div>
-          ))}
-        </div>
       )}
     </section>
   );
