@@ -531,6 +531,47 @@ details > summary {
   flex-direction: column;
   gap: var(--s5);
 }
+/* Side panels: the top part stays put, only what is below it scrolls - the
+   name search over the filters (left), the selection and tabs over the list
+   (right). */
+.ex-side.ex-filters,
+.ex-side.ex-details {
+  overflow: hidden;
+}
+.filters-search {
+  flex: none;
+  padding-bottom: var(--s4);
+  border-bottom: 1px solid var(--hairline);
+}
+.filters-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+}
+.details-selection {
+  flex: none;
+  max-height: 45%;
+  overflow-y: auto;
+  padding-bottom: var(--s4);
+  border-bottom: 1px solid var(--hairline);
+}
+.details-items {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.details-items > .tabs {
+  flex: none;
+}
+.details-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
 .ex-center {
   flex: 1;
   min-width: 0;

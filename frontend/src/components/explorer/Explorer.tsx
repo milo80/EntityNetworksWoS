@@ -72,7 +72,7 @@ export function Explorer({ network, title, actions }: Props) {
   return (
     <div className="explorer" ref={root}>
       <aside
-        className={`ex-side left${open === "left" ? " open" : ""}`}
+        className={`ex-side left ex-filters${open === "left" ? " open" : ""}`}
         style={{ width: widths?.left }}
         aria-label="Filters"
       >
@@ -156,7 +156,7 @@ export function Explorer({ network, title, actions }: Props) {
         />
       )}
       <aside
-        className={`ex-side right${open === "right" ? " open" : ""}`}
+        className={`ex-side right ex-details${open === "right" ? " open" : ""}`}
         style={{ width: widths?.right }}
         aria-label="Details"
       >

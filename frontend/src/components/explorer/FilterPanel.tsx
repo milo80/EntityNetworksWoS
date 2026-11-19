@@ -36,7 +36,8 @@ export function FilterPanel(p: Props) {
 
   return (
     <>
-      <div>
+      {/* The name search stays put; only the filters below it scroll. */}
+      <div className="filters-search">
         <label htmlFor="name-search" className="group-title">
           Find by node name
         </label>
@@ -55,76 +56,78 @@ export function FilterPanel(p: Props) {
         )}
       </div>
 
-      <fieldset style={{ border: 0, margin: 0, padding: 0 }}>
-        <legend className="group-title" style={{ width: "100%" }}>
-          <span>Group</span>
-          <button
-            type="button"
-            className="btn-link"
-            onClick={() => onChange({ ...state, teams: new Set(allTeams ? [] : p.teams) })}
-          >
-            {allTeams ? "Hide all" : "Show all"}
-          </button>
-        </legend>
-        {p.teams.map((team) => {
-          const st = p.styles.get(team);
-          return (
-            <label key={team} className="check">
-              <input
-                type="checkbox"
-                checked={state.teams.has(team)}
-                onChange={(e) =>
-                  onChange({ ...state, teams: toggled(state.teams, team, e.target.checked) })
-                }
-              />
-              <span
-                className={`swatch${st?.hollow ? " hollow" : ""}`}
-                style={{ background: st?.color }}
-                aria-hidden="true"
-              />
-              {prettyTeam(team)}
-              <span className="count">{p.teamCounts.get(team)}</span>
-            </label>
-          );
-        })}
-      </fieldset>
+      <div className="filters-scroll">
+        <fieldset style={{ border: 0, margin: 0, padding: 0 }}>
+          <legend className="group-title" style={{ width: "100%" }}>
+            <span>Group</span>
+            <button
+              type="button"
+              className="btn-link"
+              onClick={() => onChange({ ...state, teams: new Set(allTeams ? [] : p.teams) })}
+            >
+              {allTeams ? "Hide all" : "Show all"}
+            </button>
+          </legend>
+          {p.teams.map((team) => {
+            const st = p.styles.get(team);
+            return (
+              <label key={team} className="check">
+                <input
+                  type="checkbox"
+                  checked={state.teams.has(team)}
+                  onChange={(e) =>
+                    onChange({ ...state, teams: toggled(state.teams, team, e.target.checked) })
+                  }
+                />
+                <span
+                  className={`swatch${st?.hollow ? " hollow" : ""}`}
+                  style={{ background: st?.color }}
+                  aria-hidden="true"
+                />
+                {prettyTeam(team)}
+                <span className="count">{p.teamCounts.get(team)}</span>
+              </label>
+            );
+          })}
+        </fieldset>
 
-      <fieldset style={{ border: 0, margin: 0, padding: 0 }}>
-        <legend className="group-title">Link weight</legend>
-        <WeightRange
-          weights={p.weights}
-          range={state.weightRange}
-          onRange={(weightRange) => onChange({ ...state, weightRange })}
-          hideUnlinked={state.hideUnlinked}
-          onHideUnlinked={(hideUnlinked) => onChange({ ...state, hideUnlinked })}
-          shown={p.shownLinks}
-        />
-      </fieldset>
+        <fieldset style={{ border: 0, margin: 0, padding: 0 }}>
+          <legend className="group-title">Link weight</legend>
+          <WeightRange
+            weights={p.weights}
+            range={state.weightRange}
+            onRange={(weightRange) => onChange({ ...state, weightRange })}
+            hideUnlinked={state.hideUnlinked}
+            onHideUnlinked={(hideUnlinked) => onChange({ ...state, hideUnlinked })}
+            shown={p.shownLinks}
+          />
+        </fieldset>
 
-      <details open={attrActive > 0 || undefined}>
-        <summary className="group-title" style={{ display: "list-item" }}>
-          Attribute search{attrActive ? ` · ${attrActive} applied` : ""}
-        </summary>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 8 }}>
-          <p className="small muted">
-            Comma-separated terms match any (OR); conditions combine (AND).
-          </p>
-          <AttrSearch
-            label="Nodes"
-            items={p.network.nodes}
-            keys={p.nodeKeys}
-            applied={state.nodeAttr}
-            onApply={(nodeAttr: AttrFilter[]) => onChange({ ...state, nodeAttr })}
-          />
-          <AttrSearch
-            label="Links"
-            items={p.network.edges}
-            keys={p.edgeKeys}
-            applied={state.edgeAttr}
-            onApply={(edgeAttr: AttrFilter[]) => onChange({ ...state, edgeAttr })}
-          />
-        </div>
-      </details>
+        <details open={attrActive > 0 || undefined}>
+          <summary className="group-title" style={{ display: "list-item" }}>
+            Attribute search{attrActive ? ` · ${attrActive} applied` : ""}
+          </summary>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 8 }}>
+            <p className="small muted">
+              Comma-separated terms match any (OR); conditions combine (AND).
+            </p>
+            <AttrSearch
+              label="Nodes"
+              items={p.network.nodes}
+              keys={p.nodeKeys}
+              applied={state.nodeAttr}
+              onApply={(nodeAttr: AttrFilter[]) => onChange({ ...state, nodeAttr })}
+            />
+            <AttrSearch
+              label="Links"
+              items={p.network.edges}
+              keys={p.edgeKeys}
+              applied={state.edgeAttr}
+              onApply={(edgeAttr: AttrFilter[]) => onChange({ ...state, edgeAttr })}
+            />
+          </div>
+        </details>
+      </div>
     </>
   );
 }

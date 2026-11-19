@@ -96,10 +96,11 @@ export function DetailsPanel(p: Props) {
 
   return (
     <>
-      <section aria-label="Selection">
+      {/* The details stay put; only the list below scrolls. */}
+      <section aria-label="Selection" className="details-selection">
         <SelectedItem network={p.network} nodeById={p.nodeById} selected={p.selected} />
       </section>
-      <section aria-label="Visible items" style={{ minHeight: 0 }}>
+      <section aria-label="Visible items" className="details-items">
         <div className="tabs" role="tablist" aria-label="Visible items view">
           {(["readable", "json"] as const).map((v) => (
             <button
@@ -114,7 +115,7 @@ export function DetailsPanel(p: Props) {
             </button>
           ))}
         </div>
-        <div ref={listRef} role="tabpanel">
+        <div ref={listRef} role="tabpanel" className="details-list">
           {p.visibleNodes.length === 0 && p.visibleEdges.length === 0 ? (
             <p className="empty">Nothing matches the current filters.</p>
           ) : view === "readable" ? (
