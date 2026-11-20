@@ -1,8 +1,7 @@
-// Right panel: the selected item, then the visible items as a readable list or
-// as JSON. Both views list exactly visibleNodes()/visibleEdges().
-import { useEffect, useRef, useState } from "react";
+// Right panel: the selected item, then the visible items as JSON (exactly
+// visibleNodes()/visibleEdges()).
+import { useEffect, useRef } from "react";
 
-import type { GroupStyle } from "../../lib/colors";
 import {
   prettyTeam,
   prettyType,
@@ -18,12 +17,8 @@ interface Props {
   nodeById: Map<string, NetworkNode>;
   visibleNodes: NetworkNode[];
   visibleEdges: NetworkEdge[];
-  styles: Map<string, GroupStyle>;
   selected: Selection | null;
-  onSelect: (s: Selection) => void;
 }
-
-type View = "readable" | "json";
 
 function AttrList({ attr }: { attr?: Record<string, AttrValue> | null }) {
   if (!attr) return null;
@@ -80,76 +75,32 @@ function SelectedItem({
 }
 
 export function DetailsPanel(p: Props) {
-  const [view, setView] = useState<View>("readable");
   const listRef = useRef<HTMLDivElement>(null);
   const selectedKey =
     p.selected?.kind === "node" ? p.selected.id : p.selected ? `e${p.selected.index}` : null;
 
-  // Keep the selected entry in view (both tabs).
+  // Keep the selected entry in view.
   useEffect(() => {
     if (!selectedKey) return;
     const el = listRef.current?.querySelector(`[data-key="${CSS.escape(selectedKey)}"]`);
     el?.scrollIntoView?.({ block: "nearest" });
-  }, [selectedKey, view]);
+  }, [selectedKey]);
 
   const edgeIndex = (e: NetworkEdge) => p.network.edges.indexOf(e);
 
   return (
     <>
-      {/* The details stay put; only the list below scrolls. */}
+      {/* The details stay put; only the JSON below scrolls. */}
       <section aria-label="Selection" className="details-selection">
         <SelectedItem network={p.network} nodeById={p.nodeById} selected={p.selected} />
       </section>
-      <section aria-label="Visible items" className="details-items">
-        <div className="tabs" role="tablist" aria-label="Visible items view">
-          {(["readable", "json"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              role="tab"
-              className="tab"
-              aria-selected={view === v}
-              onClick={() => setView(v)}
-            >
-              {v === "readable" ? `Readable (${p.visibleNodes.length})` : "JSON"}
-            </button>
-          ))}
-        </div>
-        <div ref={listRef} role="tabpanel" className="details-list">
+      <section aria-labelledby="details-json-title" className="details-items">
+        <h3 id="details-json-title" className="group-title">
+          JSON
+        </h3>
+        <div ref={listRef} className="details-list">
           {p.visibleNodes.length === 0 && p.visibleEdges.length === 0 ? (
             <p className="empty">Nothing matches the current filters.</p>
-          ) : view === "readable" ? (
-            <ul className="entity-list">
-              {p.visibleNodes.map((n) => {
-                const st = p.styles.get(n.team);
-                return (
-                  <li
-                    key={n.id}
-                    data-key={n.id}
-                    className={`entity${selectedKey === n.id ? " selected" : ""}`}
-                    tabIndex={0}
-                    aria-current={selectedKey === n.id || undefined}
-                    onClick={() => p.onSelect({ kind: "node", id: n.id, from: "list" })}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        p.onSelect({ kind: "node", id: n.id, from: "list" });
-                      }
-                    }}
-                  >
-                    <span
-                      className={`swatch${st?.hollow ? " hollow" : ""}`}
-                      style={{ background: st?.color }}
-                      aria-hidden="true"
-                    />
-                    <span className="name">{n.name}</span>
-                    <span className="meta">
-                      {n.role} · {prettyTeam(n.team)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
           ) : (
             <pre className="json-view">
               {'{\n  "nodes": [\n'}

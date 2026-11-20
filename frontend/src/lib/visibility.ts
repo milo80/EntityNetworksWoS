@@ -1,5 +1,5 @@
-// Single source of truth for what is visible: the graph, the Readable list and
-// the JSON view all read visibleNodes()/visibleEdges() from here, so they can
+// Single source of truth for what is visible: the graph and the JSON view both
+// read visibleNodes()/visibleEdges() from here, so they can
 // never disagree. Ported from the original prototype viewer (no longer in the
 // repository; see git history), same rules:
 //

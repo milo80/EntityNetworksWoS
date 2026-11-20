@@ -21,7 +21,7 @@ vi.mock("./GraphView", () => ({
       data-edges={[...p.visibleEdgeIdx].sort().join(",")}
       data-search={p.search}
     >
-      <button type="button" onClick={() => p.onSelect({ kind: "edge", index: 0, from: "graph" })}>
+      <button type="button" onClick={() => p.onSelect({ kind: "edge", index: 0 })}>
         tap edge 0
       </button>
     </div>
@@ -47,11 +47,12 @@ function setup(network = sampleNetwork()) {
 }
 
 const graph = () => screen.getByTestId("graph");
-const readableNames = (details: HTMLElement) =>
-  within(details)
-    .queryAllByRole("listitem")
-    .map((li) => li.querySelector(".name")!.textContent);
 const jsonText = (details: HTMLElement) => details.querySelector(".json-view")?.textContent ?? "";
+/** Ids of the nodes listed in the JSON view. */
+const jsonNodeIds = (details: HTMLElement) =>
+  [...details.querySelectorAll<HTMLElement>(".json-item")]
+    .map((el) => el.dataset.key!)
+    .filter((k) => !/^e\d+$/.test(k));
 
 describe("Explorer", () => {
   it("shows the back link above the title and the footer below the graph", () => {
@@ -76,19 +77,18 @@ describe("Explorer", () => {
     const { details } = setup();
     expect(screen.getByText("5 of 5 nodes · 4 of 4 links shown")).toBeInTheDocument();
     expect(graph().dataset.nodes).toBe("a,b,c,d,z");
-    expect(readableNames(details)).toHaveLength(5);
+    expect(jsonNodeIds(details)).toHaveLength(5);
   });
 
-  it("Group checkbox hides nodes everywhere (graph, count, Readable, JSON)", async () => {
+  it("Group checkbox hides nodes everywhere (graph, count, JSON)", async () => {
     const { user, filters, details } = setup();
     await user.click(within(filters).getByRole("checkbox", { name: /USA/ }));
 
     expect(graph().dataset.nodes).toBe("a,b,d");
     expect(graph().dataset.edges).toBe("0");
     expect(screen.getByText("3 of 5 nodes · 1 of 4 links shown")).toBeInTheDocument();
-    expect(readableNames(details)).toEqual(["Rossi, Anna", "Bianchi, Marco", "Wang, Li"]);
+    expect(jsonNodeIds(details)).toEqual(["a", "b", "d"]);
 
-    await user.click(within(details).getByRole("tab", { name: "JSON" }));
     const json = jsonText(details);
     expect(json).toContain('"id": "a"');
     expect(json).not.toContain('"id": "c"');
@@ -109,7 +109,7 @@ describe("Explorer", () => {
     expect(graph().dataset.search).toBe("rossi");
     expect(screen.getByText("1 match highlighted")).toBeInTheDocument();
     expect(graph().dataset.nodes).toBe("a,b,c,d,z");
-    expect(readableNames(details)).toHaveLength(5);
+    expect(jsonNodeIds(details)).toHaveLength(5);
   });
 
   it("attribute search filters only on Apply; OR within a row, AND across rows", async () => {
@@ -163,20 +163,22 @@ describe("Explorer", () => {
     expect(graph().dataset.nodes).toBe("a,b,z");
   });
 
-  it("selecting in the list shows details; tapping a link in the graph shows the link", async () => {
-    const { user, details } = setup();
-    await user.click(within(details).getByText("Lee, Kim"));
-    const selection = within(details).getByRole("region", { name: "Selection" });
-    expect(within(selection).getByRole("heading")).toHaveTextContent("Lee, Kim");
-    expect(within(selection).getByText("Rochester")).toBeInTheDocument();
-    const list = within(details).getByRole("list");
-    expect(within(list).getByText("Lee, Kim").closest("li")).toHaveClass("selected");
+  it("the right panel shows only the JSON, no Readable list", () => {
+    const { details } = setup();
+    expect(within(details).getByRole("heading", { name: "JSON" })).toBeInTheDocument();
+    expect(within(details).queryByRole("tab")).toBeNull();
+    expect(within(details).queryByText(/Readable/)).toBeNull();
+  });
 
+  it("tapping a link in the graph shows the link and marks it in the JSON", async () => {
+    const { user, details } = setup();
+    const selection = within(details).getByRole("region", { name: "Selection" });
     await user.click(screen.getByRole("button", { name: "tap edge 0" }));
     expect(within(selection).getByRole("heading")).toHaveTextContent(
       "Rossi, Anna — Bianchi, Marco",
     );
     expect(within(selection).getByText("Fetal imaging with AI")).toBeInTheDocument();
+    expect(details.querySelector('[data-key="e0"]')).toHaveClass("selected");
   });
 
   it("filter list doubles as the legend: largest groups first, other/unknown last", () => {
@@ -199,7 +201,7 @@ describe("Explorer", () => {
 
     await user.click(within(filters).getByLabelText("Hide nodes without visible links"));
     expect(screen.getByText("2 of 5 nodes · 1 of 4 links shown")).toBeInTheDocument();
-    expect(readableNames(details)).toHaveLength(2);
+    expect(jsonNodeIds(details)).toHaveLength(2);
 
     await user.click(within(filters).getByRole("button", { name: "Reset" }));
     expect(screen.getByText("4 of 5 nodes · 4 of 4 links shown")).toBeInTheDocument(); // z has no links

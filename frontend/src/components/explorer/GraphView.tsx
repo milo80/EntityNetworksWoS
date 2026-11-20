@@ -56,7 +56,7 @@ interface Tip {
 const INK = "#0b0b0b";
 const LINE = "#c3c2b7";
 const ACCENT = "#1c5cab";
-/** Node labels keep this on-screen size at any zoom: the Readable list's size (--text-sm). */
+/** Node labels keep this on-screen size at any zoom: the side panels' text size (--text-sm). */
 const LABEL_PX = 14;
 /** Below this zoom only highlighted and selected nodes are labelled (avoids clutter). */
 const LABEL_MIN_ZOOM = 1;
@@ -173,11 +173,9 @@ export function GraphView(props: Props) {
     });
     cyRef.current = cy;
 
-    cy.on("tap", "node", (evt) =>
-      onSelectRef.current({ kind: "node", id: evt.target.id(), from: "graph" }),
-    );
+    cy.on("tap", "node", (evt) => onSelectRef.current({ kind: "node", id: evt.target.id() }));
     cy.on("tap", "edge", (evt) =>
-      onSelectRef.current({ kind: "edge", index: Number(evt.target.id().slice(1)), from: "graph" }),
+      onSelectRef.current({ kind: "edge", index: Number(evt.target.id().slice(1)) }),
     );
     cy.on("tap", (evt) => {
       if (evt.target === cy) onSelectRef.current(null);
@@ -249,7 +247,7 @@ export function GraphView(props: Props) {
     });
   }, [search, network]);
 
-  // Selection (from the graph itself or from the details panel).
+  // Selection (made in the graph).
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
@@ -261,9 +259,6 @@ export function GraphView(props: Props) {
         : cy.getElementById(`e${selected.index}`);
     if (el.empty()) return;
     el.select();
-    if (selected.from === "list") {
-      cy.animate({ center: { eles: el } }, { duration: 250 });
-    }
   }, [selected, network]);
 
   return (
