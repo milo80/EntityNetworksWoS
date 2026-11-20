@@ -1,5 +1,5 @@
 // The network explorer: filters | graph | details. Owns the filter state and
-// computes visibility once; graph, Readable and JSON all render from it.
+// computes visibility once; graph and JSON both render from it.
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { groupStyles, orderedTeams, teamCounts } from "../../lib/colors";
@@ -171,9 +171,7 @@ export function Explorer({ network, title, actions, back, footer }: Props) {
           nodeById={nodeById}
           visibleNodes={visibleNodes}
           visibleEdges={visibleEdges}
-          styles={styles}
           selected={selected}
-          onSelect={onSelect}
         />
       </aside>
     </div>
