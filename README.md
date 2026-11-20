@@ -81,6 +81,8 @@ The rest of this file is for developers: layout, setup, tests and the API.
 
 | Topic | File |
 |---|---|
+| Requirements, acceptance criteria and the tests behind them | [`docs/requirements.md`](docs/requirements.md) |
+| Claude Code agents (analyst, developer, QA, deployer) and their hand-offs | [`docs/workflow.md`](docs/workflow.md#agents-who-does-what), [`.claude/agents/`](.claude/agents/) |
 | Day-to-day commands, local -> CI -> QA -> PROD | [`docs/workflow.md`](docs/workflow.md) |
 | Development setup, pipeline, tests, smoke test, API | this file |
 | Frontend commands, layout and tests | [`frontend/README.md`](frontend/README.md) |

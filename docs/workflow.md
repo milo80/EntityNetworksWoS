@@ -24,6 +24,32 @@ in `infra/`:
 ./tf.sh prod output -raw public_ip
 ```
 
+## Agents: who does what
+
+Claude Code does the work through agents defined in `.claude/agents/`. Each step
+hands a concrete output to the next one, and **you** sign off at three checkpoints
+(stories, dev, QA) and run every deploy.
+
+| # | Who | Input | Output | Next step when |
+|---|---|---|---|---|
+| 1 | `analyst` | your request | stories and ACs in [`requirements.md`](requirements.md), status *Proposed*, open questions | — |
+| 2 | **you** | the stories | approval or changes | you approve → *Approved* |
+| 3 | `developer` | the approved stories | code and tests, AC → test references, local checks green, status *In progress* | checks pass |
+| 4 | `qa-reviewer` (+ `e2e-tester` for browser tests) | the diff and the stories | findings, a met/not-met table per AC, CI-equivalent check results | verdict "ready for dev validation"; otherwise back to 3 |
+| 5 | **you** | the running dev app (§1–2) | "validated in dev" | — |
+| 6 | `developer` | your validation | branch, commit, PR, merge after CI passes (§3) | CI on `main` is green |
+| 7 | `deployer` | the merged commit | CI status confirmed and the QA command printed | — |
+| 8 | **you** | the command | `./server.sh qa deploy` run (§4) | — |
+| 9 | `deployer` | the QA URL | health, login page, version and smoke test results | all pass; otherwise roll back or go to 3 |
+| 10 | **you** | QA | "validated in QA", status *Done* | you decide on PROD |
+| 11 | `deployer` | your PROD decision | the PROD command printed | — |
+| 12 | **you** | the command | `./server.sh prod deploy` run (§5) | — |
+| 13 | `deployer` | the PROD URL | read-only checks only: health, login page, version. Nothing is created | — |
+
+A small fix with no behavior change (a typo, a dependency bump) can skip steps 1–2. Every other
+step still applies. Tests trace back to requirements: each AC in `requirements.md` names
+its tests, and `backend/tests/test_requirements_trace.py` fails CI when one is missing.
+
 ## 1. Local development (fastest loop)
 
 **Details:** "Setup" and "Back-end" in [`README.md`](../README.md#back-end-local-development),

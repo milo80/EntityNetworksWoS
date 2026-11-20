@@ -1,5 +1,22 @@
 # EntityNetworks: project notes for Claude
 
+## Agents and workflow
+
+Work goes from requirements to delivery through the agents in `.claude/agents/`,
+in the order and with the hand-offs in `docs/workflow.md` ("Agents: who does what").
+
+- **Delegate by default.** For a feature, bug fix or behavior change, use the agents
+  without waiting to be asked. `analyst` writes the stories in `docs/requirements.md`, then
+  I approve them. `developer` builds, then `qa-reviewer` (with `e2e-tester` for browser
+  tests) reviews. After I validate in dev, `developer` merges once CI passes, and `deployer`
+  prepares and checks the deploys.
+- **Three checkpoints are mine:** approving stories, validating in dev, validating
+  in QA. Don't move past one without my word.
+- **I run every deploy.** `deployer` prints the `infra/server.sh` command and runs
+  read-only checks afterwards. No agent deploys, pushes images or applies Terraform.
+- **Requirements trace to tests.** Every acceptance criterion in
+  `docs/requirements.md` names its tests. CI's `test_requirements_trace.py` enforces it.
+
 ## Network graph (Cytoscape) conventions
 
 - **Labels keep a constant on-screen size at every zoom**, matching the
@@ -31,12 +48,12 @@
   `infra/envs/<env>/main.tf` differ, and each has its own state. No ECS until
   the app needs more than one instance (it runs one API process and one worker).
 - **Tests run in CI, not on servers.** Unit and integration tests run in CI jobs
-  on throwaway runners. The smoke test and Playwright e2e run from CI against QA.
-  *(Target, not yet implemented: CI runs them against a throwaway Compose stack
-  on the runner, not yet against the QA server.)* *(Target, not yet implemented: no
-  PROD deploy job yet.)* After a PROD deploy, CI runs a read-only smoke check
-  against PROD (health endpoint, login page loads, correct version); it creates
-  no data. Test tools are never deployed to QA or PROD.
+  on throwaway runners. The smoke test and Playwright e2e run in CI's `stack` job
+  against a throwaway Compose stack on the runner. Against QA, the `deployer` agent
+  runs the smoke test after each deploy. After a PROD deploy, it runs a read-only check
+  (health endpoint, login page loads, correct version) that creates no data.
+  *(Target, not yet implemented: CI deploy jobs that run these checks themselves.)*
+  Test tools are never deployed to QA or PROD.
 - **Local runs are for feedback, CI decides.** Tests may run locally against
   a local stack while developing; a change counts as passing only when CI
   passes.

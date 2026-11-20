@@ -538,6 +538,12 @@ details > summary {
 .ex-side.ex-details {
   overflow: hidden;
 }
+/* Right panel: its only children are the selection and the JSON list, so the
+   space under the divider comes from the JSON heading's margin alone and
+   matches the space between that heading and the list. */
+.ex-side.ex-details {
+  gap: 0;
+}
 .filters-search {
   flex: none;
   padding-bottom: var(--s4);
@@ -566,7 +572,7 @@ details > summary {
 }
 .details-items > .group-title {
   flex: none;
-  margin-top: var(--s4);
+  margin-top: var(--s2);
 }
 .details-list {
   flex: 1;
