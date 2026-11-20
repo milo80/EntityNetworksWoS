@@ -259,10 +259,11 @@ Check it. Toolbox, any directory:
 curl -s <prod-url>/api/health
 ```
 
-Host, any directory (prints the commit PROD runs):
+Host, any directory (prints the full commit SHA of the images PROD runs; it must
+equal the commit QA runs, and `/api/health` doesn't report a version):
 
 ```bash
-ssh ubuntu@<prod-ip> 'cd /opt/entitynetworks && git log -1 --oneline'
+ssh ubuntu@<prod-ip> "sed -n 's/^TAG=//p' /opt/entitynetworks/deploy/.env"
 ```
 
 Extra local copy of the latest backup, into `envs/prod/backups/<time>/`. Host,
