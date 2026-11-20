@@ -1,4 +1,4 @@
-// Attribute search for nodes or edges: rows of (attribute, comma-separated terms).
+// Attribute search for nodes or edges: rows of (attribute, terms separated by ";").
 // Terms in a row combine with OR, rows with AND. Nothing filters until Apply.
 import { useId, useState } from "react";
 
@@ -60,7 +60,7 @@ export function AttrSearch({ label, items, keys, applied, onApply }: Props) {
             <input
               className="input"
               aria-label={`${label} ${row.key} contains`}
-              placeholder="contains…"
+              placeholder="contains… (a; b)"
               list={listId}
               value={row.value}
               onChange={(e) => setRows(setRowValue(rows, i, e.target.value))}

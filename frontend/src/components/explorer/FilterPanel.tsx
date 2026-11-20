@@ -109,7 +109,7 @@ export function FilterPanel(p: Props) {
           </summary>
           <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 8 }}>
             <p className="small muted">
-              Comma-separated terms match any (OR); conditions combine (AND).
+              Separate alternatives with ; (any can match). A node must match every row.
             </p>
             <AttrSearch
               label="Nodes"

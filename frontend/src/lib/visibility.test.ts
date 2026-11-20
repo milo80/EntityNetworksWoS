@@ -47,13 +47,23 @@ describe("Relationship checkboxes", () => {
 });
 
 describe("parseAttrRows", () => {
-  it("splits comma-separated terms, trims, lower-cases and drops empty rows", () => {
+  it("splits terms on ';', trims, lower-cases and drops empty rows", () => {
     expect(
       parseAttrRows([
-        { key: "institution", value: " Univ PARMA , mayo ,," },
+        { key: "institution", value: " Univ PARMA ; mayo ;;" },
         { key: "city", value: "   " },
       ]),
     ).toEqual([{ attribute: "institution", values: ["univ parma", "mayo"] }]);
+  });
+
+  it("keeps a value with a comma as one term", () => {
+    expect(
+      parseAttrRows([
+        { key: "wos_categories", value: "Computer Science, Artificial Intelligence" },
+      ]),
+    ).toEqual([
+      { attribute: "wos_categories", values: ["computer science, artificial intelligence"] },
+    ]);
   });
 });
 
@@ -78,7 +88,7 @@ describe("matchesAttrFilters", () => {
 
 describe("node attribute search", () => {
   it("OR within a row", () => {
-    const nodeAttr = parseAttrRows([{ key: "institution", value: "parma, mayo" }]);
+    const nodeAttr = parseAttrRows([{ key: "institution", value: "parma; mayo" }]);
     expect(visible({ nodeAttr }).nodes).toEqual(["a", "b", "c", "z"]);
   });
   it("AND across rows", () => {

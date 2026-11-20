@@ -105,7 +105,7 @@ describe("Explorer", () => {
     );
     await user.type(
       within(nodes).getByRole("combobox", { name: /institution contains/ }),
-      "parma, mayo",
+      "parma; mayo",
     );
     expect(graph().dataset.nodes).toBe("a,b,c,d,z"); // typed, not applied
 

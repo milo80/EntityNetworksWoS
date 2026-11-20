@@ -55,15 +55,17 @@ export function initialFilterState(network: Network): FilterState {
 }
 
 /**
- * Turn attribute-search rows into applied filters: comma-separated terms in a
- * row are alternatives (OR); empty rows are dropped.
+ * Turn attribute-search rows into applied filters: terms separated by ";" in a
+ * row are alternatives (OR); empty rows are dropped. Not "," - many values
+ * contain one ("Computer Science, Artificial Intelligence"), none contain ";"
+ * (it is the WoS list separator).
  */
 export function parseAttrRows(rows: readonly { key: string; value: string }[]): AttrFilter[] {
   return rows
     .map((row) => ({
       attribute: row.key,
       values: (row.value || "")
-        .split(",")
+        .split(";")
         .map((v) => v.trim().toLowerCase())
         .filter((v) => v.length > 0),
     }))
