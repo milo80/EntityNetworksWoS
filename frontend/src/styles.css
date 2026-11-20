@@ -586,6 +586,14 @@ details > summary {
   justify-content: space-between;
   gap: var(--s3);
 }
+.ex-head .back {
+  margin-bottom: var(--s1);
+}
+.ex-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s2);
+}
 .ex-head .sub {
   font-size: var(--text-sm);
   color: var(--ink-2);

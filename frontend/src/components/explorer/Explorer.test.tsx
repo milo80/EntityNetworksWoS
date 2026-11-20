@@ -54,6 +54,24 @@ const readableNames = (details: HTMLElement) =>
 const jsonText = (details: HTMLElement) => details.querySelector(".json-view")?.textContent ?? "";
 
 describe("Explorer", () => {
+  it("shows the back link above the title and the footer below the graph", () => {
+    render(
+      <Explorer
+        network={sampleNetwork()}
+        title="Test network"
+        back={<a href="/datasets/7">← AI in medicine</a>}
+        footer={<a href="/export">Download JSON</a>}
+      />,
+    );
+    const heading = screen.getByRole("heading", { name: "Test network" });
+    const back = screen.getByRole("link", { name: "← AI in medicine" });
+    const download = screen.getByRole("link", { name: "Download JSON" });
+    const after = (a: Node, b: Node) =>
+      !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(after(back, heading)).toBe(true);
+    expect(after(graph(), download)).toBe(true);
+  });
+
   it("starts with everything visible", () => {
     const { details } = setup();
     expect(screen.getByText("5 of 5 nodes · 4 of 4 links shown")).toBeInTheDocument();

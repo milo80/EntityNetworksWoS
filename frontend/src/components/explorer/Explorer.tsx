@@ -14,14 +14,18 @@ import type { Selection } from "./types";
 interface Props {
   network: Network;
   title: string;
-  /** Extra controls in the header (e.g. Download). */
+  /** Extra controls in the header. */
   actions?: ReactNode;
+  /** A back link above the title. */
+  back?: ReactNode;
+  /** Below the graph (e.g. Download). */
+  footer?: ReactNode;
 }
 
 const MIN_SIDE = 200;
 const MIN_GRAPH = 320;
 
-export function Explorer({ network, title, actions }: Props) {
+export function Explorer({ network, title, actions, back, footer }: Props) {
   const styles = useMemo(() => groupStyles(network), [network]);
   const teams = useMemo(() => orderedTeams(network, styles), [network, styles]);
   const counts = useMemo(() => teamCounts(network), [network]);
@@ -106,6 +110,7 @@ export function Explorer({ network, title, actions }: Props) {
       <div className="ex-center">
         <div className="ex-head">
           <div>
+            {back}
             <h1>{title}</h1>
             <p className="sub" role="status">
               {visibleNodes.length} of {network.nodes.length} nodes · {visibleEdges.length} of{" "}
@@ -143,6 +148,7 @@ export function Explorer({ network, title, actions }: Props) {
           selected={selected}
           onSelect={onSelect}
         />
+        {footer && <div className="ex-foot">{footer}</div>}
       </div>
 
       {widths && (

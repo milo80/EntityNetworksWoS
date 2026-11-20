@@ -8,6 +8,7 @@ import { MemoryRouter } from "react-router";
 
 import { App } from "../App";
 import { clearFormState } from "../lib/buildFormState";
+import { forgetNetwork, rememberNetwork } from "../lib/lastNetwork";
 import { SESSION, mockApi } from "../test/mockApi";
 import profile from "../test/synthetic_profile.json";
 
@@ -35,6 +36,7 @@ const DATASET = {
 afterEach(() => {
   vi.unstubAllGlobals();
   clearFormState();
+  forgetNetwork();
   document.cookie = "entitynet_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
 });
 
@@ -691,6 +693,93 @@ describe("navigation", () => {
     expect(await screen.findByText(/No datasets yet/)).toBeInTheDocument();
     expect(screen.getByRole("main")).toContainElement(
       screen.getAllByRole("link", { name: "Datasets" }).find((a) => !nav().contains(a))!,
+    );
+  });
+});
+
+describe("explore tab", () => {
+  const nav = () => screen.getByRole("navigation", { name: "Main" });
+  const run = (id: number, status: string, created_at: string) => ({
+    id,
+    dataset_id: 7,
+    relation: "author",
+    params: {},
+    status,
+    error: null,
+    node_count: null,
+    edge_count: null,
+    created_at,
+    started_at: null,
+    finished_at: null,
+  });
+
+  it("opens the dataset's newest finished network and marks the Explore tab", async () => {
+    mockApi({
+      "GET /auth/me": () => ({ body: SESSION }),
+      "GET /datasets": () => ({ body: [DATASET] }),
+      "GET /datasets/7": () => ({ body: DATASET }),
+      "GET /runs?dataset_id=7": () => ({
+        body: [
+          run(4, "succeeded", "2026-11-12T10:00:00Z"),
+          run(6, "failed", "2026-11-14T10:00:00Z"),
+          run(5, "succeeded", "2026-11-13T10:00:00Z"),
+        ],
+      }),
+      // Not finished by the time it opens: the page says so (no graph needed here).
+      "GET /runs/5": () => ({ body: run(5, "running", "2026-11-13T10:00:00Z") }),
+    });
+    renderApp("/explore");
+
+    expect(await screen.findByText("This network is running.")).toBeInTheDocument();
+    const explore = within(nav()).getByRole("link", { name: "Explore" });
+    expect(explore).toHaveAttribute("aria-current", "page");
+    // The open network's dataset drives the other tabs.
+    expect(explore).toHaveAttribute("href", "/explore?dataset=7");
+    expect(within(nav()).getByRole("link", { name: "View data" })).toHaveAttribute(
+      "href",
+      "/datasets/7/data",
+    );
+    expect(within(nav()).getByRole("link", { name: "Datasets" })).not.toHaveAttribute(
+      "aria-current",
+    );
+  });
+
+  it("returns to the network last opened for that dataset", async () => {
+    rememberNetwork({ runId: 9, datasetId: 7 });
+    mockApi({
+      "GET /auth/me": () => ({ body: SESSION }),
+      "GET /runs/9": () => ({ body: run(9, "queued", "2026-11-13T10:00:00Z") }),
+    });
+    renderApp("/explore?dataset=7");
+    expect(await screen.findByText("This network is queued.")).toBeInTheDocument();
+  });
+
+  it("points to building one when the dataset has no finished network", async () => {
+    rememberNetwork({ runId: 9, datasetId: 3 }); // another dataset's
+    mockApi({
+      "GET /auth/me": () => ({ body: SESSION }),
+      "GET /datasets/7": () => ({ body: DATASET }),
+      "GET /runs?dataset_id=7": () => ({ body: [run(6, "failed", "2026-11-14T10:00:00Z")] }),
+    });
+    renderApp("/explore?dataset=7");
+    expect(await screen.findByText("No network built for this dataset yet.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Create one" })).toHaveAttribute("href", "/datasets/7");
+  });
+
+  it("links to Explore with the dataset from a dataset page", async () => {
+    mockApi({
+      "GET /auth/me": () => ({ body: SESSION }),
+      "GET /datasets": () => ({ body: [DATASET] }),
+      "GET /datasets/7": () => ({ body: DATASET }),
+      "GET /datasets/7/network-options": () => ({ status: 404, body: { detail: "x" } }),
+      "GET /datasets/7/profile": () => ({ body: { status: "ready", error: null, profile } }),
+      "GET /runs?dataset_id=7": () => ({ body: [] }),
+    });
+    renderApp("/datasets/7");
+    await screen.findByRole("heading", { name: "AI in medicine" });
+    expect(within(nav()).getByRole("link", { name: "Explore" })).toHaveAttribute(
+      "href",
+      "/explore?dataset=7",
     );
   });
 });

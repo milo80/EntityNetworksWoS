@@ -16,6 +16,9 @@ const RunExplorerPage = lazy(() =>
 const LocalExplorerPage = lazy(() =>
   import("./pages/ExplorerPages").then((m) => ({ default: m.LocalExplorerPage })),
 );
+const ExploreIndexPage = lazy(() =>
+  import("./pages/ExplorerPages").then((m) => ({ default: m.ExploreIndexPage })),
+);
 const Loading = ({ children }: { children: ReactNode }) => (
   <Suspense fallback={<p className="empty">Loading…</p>}>{children}</Suspense>
 );
@@ -38,6 +41,14 @@ export function App() {
         <Route path="/datasets/:datasetId" element={<DatasetPage />} />
         <Route path="/datasets/:datasetId/data" element={<DatasetDataPage />} />
         <Route path="/data" element={<DataIndexPage />} />
+        <Route
+          path="/explore"
+          element={
+            <Loading>
+              <ExploreIndexPage />
+            </Loading>
+          }
+        />
         <Route
           path="/runs/:runId"
           element={

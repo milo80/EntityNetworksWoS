@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router";
+import { useEffect } from "react";
+import { Link, Navigate, useParams, useSearchParams } from "react-router";
 
 import { api } from "../api/client";
 import { ErrorNote } from "../components/common";
 import { Explorer } from "../components/explorer/Explorer";
+import { forgetNetwork, lastNetwork, rememberNetwork } from "../lib/lastNetwork";
 import { useLocalNetwork } from "../lib/localNetwork";
 import { runTitle, useNetworkOptions } from "../lib/runLabels";
 
@@ -24,6 +26,14 @@ export function RunExplorerPage() {
   const options = useNetworkOptions(
     run.data?.relation === "custom" ? run.data.dataset_id : undefined,
   );
+  // The Explore tab comes back here; a network that is gone is forgotten.
+  const ready = run.data?.status === "succeeded" ? run.data : undefined;
+  useEffect(() => {
+    if (ready) rememberNetwork({ runId: ready.id, datasetId: ready.dataset_id });
+  }, [ready]);
+  useEffect(() => {
+    if (run.isError && lastNetwork()?.runId === runId) forgetNetwork();
+  }, [run.isError, runId]);
 
   if (run.isError) return <PageMessage error={run.error} />;
   if (run.data && run.data.status !== "succeeded") {
@@ -44,16 +54,59 @@ export function RunExplorerPage() {
     <Explorer
       network={network.data}
       title={title}
-      actions={
-        <>
-          <Link to={`/datasets/${run.data.dataset_id}`} className="btn btn-sm">
-            Back to dataset
-          </Link>
-          <a href={api.exportUrl(runId)} className="btn btn-sm" download>
-            Download JSON
-          </a>
-        </>
+      back={
+        <Link to={`/datasets/${run.data.dataset_id}`} className="back">
+          ← {dataset.data?.name ?? "Dataset"}
+        </Link>
       }
+      footer={
+        <a href={api.exportUrl(runId)} className="btn btn-sm" download>
+          Download JSON
+        </a>
+      }
+    />
+  );
+}
+
+const newestFirst = (a: { created_at: string }, b: { created_at: string }) =>
+  b.created_at.localeCompare(a.created_at);
+
+/**
+ * The "Explore" tab without a network in the URL: the network last opened (for
+ * this dataset, when one is given), else the dataset's newest finished network.
+ */
+export function ExploreIndexPage() {
+  const [params] = useSearchParams();
+  const wanted = params.get("dataset") ? Number(params.get("dataset")) : undefined;
+  const last = lastNetwork();
+  const useLast = !!last && (wanted === undefined || last.datasetId === wanted);
+
+  const datasets = useQuery({
+    queryKey: ["datasets"],
+    queryFn: api.listDatasets,
+    enabled: !useLast && wanted === undefined,
+  });
+  const datasetId = wanted ?? [...(datasets.data ?? [])].sort(newestFirst)[0]?.id;
+  const runs = useQuery({
+    queryKey: ["runs", datasetId],
+    queryFn: () => api.listRuns(datasetId!),
+    enabled: !useLast && datasetId !== undefined,
+  });
+
+  if (useLast) return <Navigate to={`/runs/${last.runId}`} replace />;
+  if (datasets.isError) return <PageMessage error={datasets.error} />;
+  if (runs.isError) return <PageMessage error={runs.error} />;
+  if (datasets.data && datasetId === undefined) {
+    return <PageMessage text="No datasets yet: upload one, then build a network." />;
+  }
+  if (!runs.data) return <p className="empty">Loading…</p>;
+  const newest = runs.data.filter((r) => r.status === "succeeded").sort(newestFirst)[0];
+  if (newest) return <Navigate to={`/runs/${newest.id}`} replace />;
+  return (
+    <PageMessage
+      text="No network built for this dataset yet."
+      back={`/datasets/${datasetId}`}
+      backLabel="Create one"
     />
   );
 }
@@ -77,15 +130,17 @@ function PageMessage({
   text,
   error,
   back = "/datasets",
+  backLabel = "Back",
 }: {
   text?: string;
   error?: unknown;
   back?: string;
+  backLabel?: string;
 }) {
   return (
     <div className="page">
       {error ? <ErrorNote error={error} /> : <p>{text}</p>}
-      <Link to={back}>Back</Link>
+      <Link to={back}>{backLabel}</Link>
     </div>
   );
 }
