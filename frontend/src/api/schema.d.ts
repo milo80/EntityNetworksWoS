@@ -285,6 +285,31 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AttributeOption */
+        AttributeOption: {
+            /**
+             * Key
+             * @description What node_attributes takes: a column name or a derived field
+             */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Attr Key
+             * @description The key it gets in a node's attr
+             */
+            attr_key: string;
+            /**
+             * Fill Pct
+             * @description % of articles with a value (from the profile)
+             */
+            fill_pct: number | null;
+            /**
+             * Not For
+             * @description Entities whose nodes come from this same field (not added to them)
+             */
+            not_for: ("author" | "institution" | "corresponding_institution" | "country" | "organization" | "journal" | "funder" | "wos_category" | "research_area" | "article")[];
+        };
         /** AuthorParams */
         AuthorParams: {
             /**
@@ -428,6 +453,18 @@ export interface components {
              * @default 300
              */
             top_n: number;
+            /**
+             * Node Attributes
+             * @description Fields added to each node for attribute search: a column name or a derived field ('country', 'articles'); each node gets the most common values among its articles. Fields missing from the data are skipped.
+             * @default [
+             *       "Research Areas",
+             *       "country",
+             *       "Publication Year",
+             *       "WoS Categories",
+             *       "Document Type"
+             *     ]
+             */
+            node_attributes: string[];
         };
         /** CustomRunCreate */
         CustomRunCreate: {
@@ -451,7 +488,14 @@ export interface components {
              *       "threshold": 0.5,
              *       "max_word_df": 0.05,
              *       "min_weight": 1,
-             *       "top_n": 300
+             *       "top_n": 300,
+             *       "node_attributes": [
+             *         "Research Areas",
+             *         "country",
+             *         "Publication Year",
+             *         "WoS Categories",
+             *         "Document Type"
+             *       ]
              *     }
              */
             params: components["schemas"]["CustomParams"];
@@ -709,6 +753,11 @@ export interface components {
             links: components["schemas"]["LinkOption"][];
             /** Models */
             models: components["schemas"]["ModelOption"][];
+            /**
+             * Attributes
+             * @description Every field a node attribute can come from: derived ones, then the dataset's columns (only the defaults while the profile isn't ready)
+             */
+            attributes: components["schemas"]["AttributeOption"][];
             defaults: components["schemas"]["CustomParams"];
         };
         /** PasswordResetConfirm */

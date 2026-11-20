@@ -14,6 +14,7 @@ from ..config import Settings, get_settings
 from ..db import get_db
 from ..models import Dataset, DatasetFile
 from ..schemas.api import (
+    AttributeOption,
     CustomParams,
     DatasetOut,
     DatasetProfileOut,
@@ -162,7 +163,25 @@ def get_network_options(dataset_id: int, user: CurrentUser, db: Db) -> NetworkOp
         )
         for key, label in custom.MODELS.items()
     ]
-    return NetworkOptionsOut(entities=entities, links=links, models=models, defaults=CustomParams())
+    columns = list(fill) if fill is not None else list(custom.DEFAULT_NODE_ATTRIBUTES)
+    fields = list(dict.fromkeys([*custom.DERIVED_ATTRIBUTES, *columns]))
+    attributes = [
+        AttributeOption(
+            key=name,
+            label=custom.attribute_label(name),
+            attr_key=custom.attribute_key(name),
+            fill_pct=None if fill is None or name not in fill else fill[name],
+            not_for=[e for e in custom.ENTITIES if custom.node_attribute_problem(e, name)],
+        )
+        for name in fields
+    ]
+    return NetworkOptionsOut(
+        entities=entities,
+        links=links,
+        models=models,
+        attributes=attributes,
+        defaults=CustomParams(),
+    )
 
 
 @router.delete("/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)

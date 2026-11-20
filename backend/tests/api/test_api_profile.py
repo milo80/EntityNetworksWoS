@@ -71,6 +71,20 @@ def test_network_options_follow_the_profile(client, db, settings, synthetic_read
     models = {m["key"]: m for m in options["models"]}
     assert models["character_similarity"]["threshold_default"] == 0.9
     assert options["defaults"]["entity"] == "institution"
+    assert options["defaults"]["node_attributes"] == [
+        "Research Areas",
+        "country",
+        "Publication Year",
+        "WoS Categories",
+        "Document Type",
+    ]
+    attributes = {a["key"]: a for a in options["attributes"]}
+    assert list(attributes)[:2] == ["country", "articles"]  # derived fields first
+    assert attributes["Publication Year"]["attr_key"] == "publication_year"
+    assert attributes["Publication Year"]["fill_pct"] == 100.0
+    assert attributes["Article Title"]["label"] == "Article Title"  # every column is offered
+    assert "country" in attributes["country"]["not_for"]  # its own field
+    assert attributes["articles"]["not_for"] == []
 
 
 def test_network_options_are_private(make_client, client):

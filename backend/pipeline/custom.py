@@ -445,6 +445,74 @@ LINKS: dict[str, LinkSpec] = {
 }
 
 
+# ------------------------------------------------------------------ node attributes
+# Fields copied onto every node for the explorer's attribute search: the values
+# most common among the node's articles. Any column of the dataset can be one
+# (no catalog to keep up with new export schemas), plus a few derived fields.
+
+DERIVED_ATTRIBUTES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "country": ("Country (from Addresses)", ("Addresses",)),
+    "articles": ("Articles (count)", ()),
+}
+"""key -> (label, columns it needs). Any other attribute name is a column name."""
+DEFAULT_NODE_ATTRIBUTES: tuple[str, ...] = (
+    "Research Areas",
+    "country",
+    "Publication Year",
+    "WoS Categories",
+    "Document Type",
+)
+"""The five fields with the most filter context in the WoS samples."""
+TOP_ATTRIBUTE_VALUES = 3
+"""A node keeps this many of its most common values per attribute."""
+MAX_ATTRIBUTE_CHARS = 80
+"""Longer values (abstracts, titles) are cut; a prefix still matches 'contains'."""
+
+
+def attribute_key(name: str) -> str:
+    """The key in a node's attr: 'Research Areas' -> 'research_areas'."""
+    if name in DERIVED_ATTRIBUTES:
+        return name
+    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "field"
+
+
+def attribute_label(name: str) -> str:
+    return DERIVED_ATTRIBUTES[name][0] if name in DERIVED_ATTRIBUTES else name
+
+
+def attribute_columns(name: str) -> tuple[str, ...]:
+    return DERIVED_ATTRIBUTES[name][1] if name in DERIVED_ATTRIBUTES else (name,)
+
+
+def node_attribute_problem(entity: str, name: str) -> str | None:
+    """Why this attribute isn't added to these nodes, or None when it is."""
+    espec = ENTITIES[entity]
+    if set(attribute_columns(name)) & set(espec.columns):
+        return f"Comes from the same field as {espec.label} nodes"
+    return None
+
+
+def _cell_values(value: Any) -> list[str]:
+    """One cell -> its values: numbers as written, text split on ';' (WoS lists)."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return []
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    if not isinstance(value, str):
+        return [str(value)]
+    cut = MAX_ATTRIBUTE_CHARS
+    return [v if len(v) <= cut else v[: cut - 1] + "…" for v in _dedupe(_split(value))]
+
+
+def _attribute_values(articles: pd.DataFrame, name: str) -> list[list[str]]:
+    if name == "country":
+        return [
+            _dedupe(r["country"] for r in parse_address_block(raw) if r["country"])
+            for raw in articles["Addresses"]
+        ]
+    return [_cell_values(v) for v in articles[name]]
+
+
 def combination_problem(entity: str, link: str, model: str) -> str | None:
     """Why this combination can't be built, or None when it can."""
     if entity not in ENTITIES:
@@ -702,6 +770,35 @@ class CustomParams:
     top_n: int = 300
     max_team_categories: int = 12
     min_team_size: int = 2
+    node_attributes: tuple[str, ...] = DEFAULT_NODE_ATTRIBUTES
+
+
+def _node_attribute_values(
+    articles: pd.DataFrame, entity: str, chosen: Iterable[str]
+) -> dict[str, tuple[list[list[str]], bool]]:
+    """attr key -> (per-article values, sort by value) for the chosen fields.
+
+    Fields of the node's own column and fields missing from the data are
+    skipped (a run never fails over a display-only field). 'articles' is the
+    node's article count, added separately.
+    """
+    out: dict[str, tuple[list[list[str]], bool]] = {}
+    for name in dict.fromkeys(chosen):
+        if name == "articles" or node_attribute_problem(entity, name):
+            continue
+        if not all(c in articles for c in attribute_columns(name)):
+            continue
+        numeric = name in articles and pd.api.types.is_numeric_dtype(articles[name])
+        out.setdefault(attribute_key(name), (_attribute_values(articles, name), numeric))
+    return out
+
+
+def _top_values(counts: Counter, sort_values: bool) -> list[str]:
+    top = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:TOP_ATTRIBUTE_VALUES]
+    values = [v for v, _ in top]
+    if sort_values:  # numbers (years) in value order
+        return sorted(values, key=lambda v: (len(v), v))
+    return values
 
 
 def build_custom_graph(articles: pd.DataFrame, params: CustomParams) -> nx.Graph:
@@ -740,8 +837,10 @@ def build_custom_graph(articles: pd.DataFrame, params: CustomParams) -> nx.Graph
     )
 
     # Nodes: every entity of an article that has a link value.
+    extra = _node_attribute_values(articles, params.entity, params.node_attributes)
     names: dict[str, Counter] = defaultdict(Counter)
     attrs: dict[str, dict[str, Counter]] = defaultdict(lambda: defaultdict(Counter))
+    extra_counts: dict[str, dict[str, Counter]] = defaultdict(lambda: defaultdict(Counter))
     article_count: Counter = Counter()
     for i, occs in enumerate(entities):
         if not values[i]:
@@ -751,11 +850,21 @@ def build_custom_graph(articles: pd.DataFrame, params: CustomParams) -> nx.Graph
             article_count[eid] += 1
             for k, v in occ_attrs.items():
                 attrs[eid][k][v] += 1
+            for k, (per_article, _) in extra.items():
+                extra_counts[eid][k].update(per_article[i])
+    # The entity's own attributes (an author's country from their address) win
+    # over the article-level ones of the same name.
+    own_keys = {k for a in attrs.values() for k in a}
     G = nx.Graph()
     for eid, counts in names.items():
-        node = {"display_name": counts.most_common(1)[0][0], "articles": article_count[eid]}
+        node: dict[str, Any] = {"display_name": counts.most_common(1)[0][0]}
+        if "articles" in params.node_attributes:
+            node["articles"] = article_count[eid]
         for k, c in attrs[eid].items():
             node[k] = c.most_common(1)[0][0]
+        for k, c in extra_counts[eid].items():
+            if k not in own_keys and c:
+                node[k] = _top_values(c, extra[k][1])
         G.add_node(eid, **node)
 
     titles = articles.get("Article Title")

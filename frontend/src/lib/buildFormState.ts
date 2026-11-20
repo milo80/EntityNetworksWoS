@@ -6,7 +6,8 @@ import type { Relation } from "../api/client";
 export interface BuildFormState {
   relation: Relation | null;
   values: Record<string, string>;
-  custom: { entity: string; link: string; model: string };
+  /** attributes: node attributes for attribute search (missing in older saved state). */
+  custom: { entity: string; link: string; model: string; attributes?: string[] };
   expanded: boolean;
   moreOpen: boolean;
 }
@@ -27,6 +28,7 @@ function isState(x: unknown): x is BuildFormState {
     typeof custom.entity === "string" &&
     typeof custom.link === "string" &&
     typeof custom.model === "string" &&
+    (custom.attributes === undefined || Array.isArray(custom.attributes)) &&
     typeof s.expanded === "boolean" &&
     typeof s.moreOpen === "boolean"
   );

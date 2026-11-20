@@ -260,6 +260,13 @@ describe("datasets", () => {
       available: true,
       reason: null,
     });
+    const attribute = (key: string, label: string, fill: number | null, notFor: string[] = []) => ({
+      key,
+      label,
+      attr_key: key.toLowerCase().replace(/ /g, "_"),
+      fill_pct: fill,
+      not_for: notFor,
+    });
     const OPTIONS = {
       entities: [
         entity("institution", "Institution (all authors)", ["keywords", "article_title"]),
@@ -290,6 +297,14 @@ describe("datasets", () => {
           threshold_default: 0.85,
         },
       ],
+      attributes: [
+        attribute("country", "Country (from Addresses)", null, ["country"]),
+        attribute("articles", "Articles (count)", null),
+        attribute("Research Areas", "Research Areas", 100),
+        attribute("Publication Year", "Publication Year", 100),
+        attribute("Publisher", "Publisher", 98.5),
+        attribute("Source Title", "Source Title", 100, ["journal"]),
+      ],
       defaults: {
         entity: "institution",
         link: "keywords",
@@ -303,6 +318,7 @@ describe("datasets", () => {
         max_authors: 15,
         max_team_categories: 12,
         min_team_size: 2,
+        node_attributes: ["Research Areas", "country", "Publication Year", "Source Title"],
       },
     };
     const { calls } = mockApi({
@@ -354,6 +370,34 @@ describe("datasets", () => {
     expect(within(form).getByLabelText("Minimum similarity (%)")).toHaveValue(85);
     expect(within(form).getByText("Spelled alike.")).toBeInTheDocument();
 
+    // Node attributes for attribute search: the defaults are listed; a field the
+    // nodes already are (journal nodes from Source Title) is marked, not dropped.
+    const list = within(form).getByRole("list", { name: "Attributes for search" });
+    expect(
+      within(list)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent?.replace("−", "")),
+    ).toEqual([
+      "Research Areas",
+      "Country (from Addresses)",
+      "Publication Year",
+      "Source Title (same field as the nodes)",
+    ]);
+    // − removes; + opens the catalogue of every field not yet chosen.
+    await user.click(within(list).getByRole("button", { name: "Remove Publication Year" }));
+    await user.click(within(form).getByRole("button", { name: "Add a field" }));
+    const catalogue = within(form).getByRole("dialog", { name: "Fields" });
+    expect(
+      within(catalogue)
+        .getAllByRole("button")
+        .map((b) => b.getAttribute("aria-label")),
+    ).toEqual(["Add Articles (count)", "Add Publication Year", "Add Publisher"]);
+    expect(within(catalogue).getByText("98.5%")).toBeInTheDocument();
+    await user.type(within(catalogue).getByLabelText("Filter fields"), "publ");
+    await user.click(within(catalogue).getByRole("button", { name: "Add Publisher" }));
+    await user.keyboard("{Escape}");
+    expect(within(form).queryByRole("dialog", { name: "Fields" })).toBeNull();
+
     // The minimum link weight stays at the API default (1, drops nothing).
     expect(within(form).queryByLabelText("Minimum link weight")).toBeNull();
 
@@ -372,6 +416,7 @@ describe("datasets", () => {
         max_item_df: 0.12,
         threshold: 0.85,
         max_word_df: 0.05,
+        node_attributes: ["Research Areas", "country", "Source Title", "Publisher"],
       },
     });
     // The new run is listed with labels from the options.
@@ -418,6 +463,7 @@ describe("datasets", () => {
         { key: "word_matching", label: "Word matching", description: "", threshold_default: null },
         { key: "word_overlap", label: "Word overlap", description: "", threshold_default: 0.4 },
       ],
+      attributes: [],
       defaults: {
         entity: "institution",
         link: "keywords",

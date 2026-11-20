@@ -719,6 +719,65 @@
   },
   "components": {
     "schemas": {
+      "AttributeOption": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key",
+            "description": "What node_attributes takes: a column name or a derived field"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "attr_key": {
+            "type": "string",
+            "title": "Attr Key",
+            "description": "The key it gets in a node's attr"
+          },
+          "fill_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fill Pct",
+            "description": "% of articles with a value (from the profile)"
+          },
+          "not_for": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "author",
+                "institution",
+                "corresponding_institution",
+                "country",
+                "organization",
+                "journal",
+                "funder",
+                "wos_category",
+                "research_area",
+                "article"
+              ]
+            },
+            "type": "array",
+            "title": "Not For",
+            "description": "Entities whose nodes come from this same field (not added to them)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "attr_key",
+          "fill_pct",
+          "not_for"
+        ],
+        "title": "AttributeOption"
+      },
       "AuthorParams": {
         "properties": {
           "max_authors": {
@@ -969,6 +1028,24 @@
             "minimum": 10.0,
             "title": "Top N",
             "default": 300
+          },
+          "node_attributes": {
+            "items": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Node Attributes",
+            "description": "Fields added to each node for attribute search: a column name or a derived field ('country', 'articles'); each node gets the most common values among its articles. Fields missing from the data are skipped.",
+            "default": [
+              "Research Areas",
+              "country",
+              "Publication Year",
+              "WoS Categories",
+              "Document Type"
+            ]
           }
         },
         "additionalProperties": false,
@@ -1000,7 +1077,14 @@
               "threshold": 0.5,
               "max_word_df": 0.05,
               "min_weight": 1,
-              "top_n": 300
+              "top_n": 300,
+              "node_attributes": [
+                "Research Areas",
+                "country",
+                "Publication Year",
+                "WoS Categories",
+                "Document Type"
+              ]
             }
           }
         },
@@ -1645,6 +1729,14 @@
             "type": "array",
             "title": "Models"
           },
+          "attributes": {
+            "items": {
+              "$ref": "#/components/schemas/AttributeOption"
+            },
+            "type": "array",
+            "title": "Attributes",
+            "description": "Every field a node attribute can come from: derived ones, then the dataset's columns (only the defaults while the profile isn't ready)"
+          },
           "defaults": {
             "$ref": "#/components/schemas/CustomParams"
           }
@@ -1654,6 +1746,7 @@
           "entities",
           "links",
           "models",
+          "attributes",
           "defaults"
         ],
         "title": "NetworkOptionsOut"

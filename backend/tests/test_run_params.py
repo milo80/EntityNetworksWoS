@@ -57,3 +57,14 @@ def test_build_network_applies_api_params(monkeypatch):
         "Synthetic article WOS:3",
         "Synthetic article WOS:5",
     }
+
+
+def test_custom_node_attributes_are_field_names():
+    from pydantic import ValidationError
+
+    from app.schemas.api import CustomParams
+
+    assert CustomParams(node_attributes=[]).node_attributes == ()
+    assert CustomParams(node_attributes=["Any Column"]).node_attributes == ("Any Column",)
+    with pytest.raises(ValidationError):
+        CustomParams(node_attributes=[""])

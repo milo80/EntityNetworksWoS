@@ -15,7 +15,13 @@ import {
   type LinkEntry,
 } from "../components/catalog";
 import { ErrorNote } from "../components/common";
-import { clearFormState, loadFormState, saveFormState } from "../lib/buildFormState";
+import {
+  type BuildFormState,
+  clearFormState,
+  loadFormState,
+  saveFormState,
+} from "../lib/buildFormState";
+import { NodeAttributesPicker } from "../components/NodeAttributesPicker";
 import { RELATION_LABEL, useNetworkOptions } from "../lib/runLabels";
 
 export const runsKey = (datasetId: number) => ["runs", datasetId] as const;
@@ -163,6 +169,7 @@ const DEFAULT_VALUES: Record<FieldName, string> = {
   maxWordPct: "5",
 };
 const DEFAULT_CUSTOM = { entity: "institution", link: "keywords", model: "word_matching" };
+type CustomChoice = BuildFormState["custom"];
 
 export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
   const qc = useQueryClient();
@@ -176,7 +183,7 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
     ...DEFAULT_VALUES,
     ...(saved?.values as Partial<Record<FieldName, string>> | undefined),
   });
-  const [custom, setCustom] = useState(saved?.custom ?? DEFAULT_CUSTOM);
+  const [custom, setCustom] = useState<CustomChoice>(saved?.custom ?? DEFAULT_CUSTOM);
   const [expanded, setExpanded] = useState(saved?.expanded ?? false);
   const [moreOpen, setMoreOpen] = useState(saved?.moreOpen ?? false);
   useEffect(() => {
@@ -199,6 +206,9 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
   const link = opts?.links.find((l) => l.key === custom.link);
   const model = opts?.models.find((m) => m.key === custom.model);
   const linksForEntity = opts?.links.filter((l) => entity?.links.includes(l.key)) ?? [];
+  // Node attributes for attribute search: the server's defaults until changed.
+  const chosenAttributes: string[] = custom.attributes ?? opts?.defaults.node_attributes ?? [];
+  const setAttributes = (attributes: string[]) => setCustom((c) => ({ ...c, attributes }));
 
   // The data page's catalog: the chosen node type's and link field's values
   // beside the form, and its group color on the selects.
@@ -246,7 +256,7 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
     });
     if (r === "custom" && opts) {
       const d = opts.defaults;
-      setCustom({ entity: d.entity, link: d.link, model: d.model });
+      setCustom({ entity: d.entity, link: d.link, model: d.model, attributes: d.node_attributes });
     }
   };
 
@@ -343,6 +353,8 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
           max_item_df: n("maxItemPct") / 100,
           threshold: n("similarityPct") / 100,
           max_word_df: n("maxWordPct") / 100,
+          // In the chosen order; the pipeline skips what doesn't apply.
+          node_attributes: chosenAttributes,
         },
       };
     }
@@ -432,6 +444,26 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
                     : opts.entities.map(entityOption)}
                 </select>
               </ParamRow>
+            )}
+            {relation === "custom" && opts && (
+              <div className="param-row">
+                <div className="field">
+                  <span className="field-label">Attributes for search</span>
+                  <NodeAttributesPicker
+                    id="custom-attributes"
+                    options={opts.attributes}
+                    entity={custom.entity}
+                    chosen={chosenAttributes}
+                    onChange={setAttributes}
+                    describedBy="custom-attributes-help"
+                  />
+                </div>
+                <p id="custom-attributes-help" className="param-help">
+                  Fields added to each node so the explorer&apos;s attribute search can filter by
+                  them: the most common values (up to 3) among the node&apos;s articles. Add any
+                  field of the data with +.
+                </p>
+              </div>
             )}
             {field("topN", "top-n")}
           </ParamGroup>

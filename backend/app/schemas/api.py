@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
-from pipeline.custom import combination_problem
+from pipeline.custom import DEFAULT_NODE_ATTRIBUTES, combination_problem
 
 # ---------------------------------------------------------------- auth
 
@@ -145,6 +145,7 @@ LinkName = Literal[
     "funding_text",
 ]
 ModelName = Literal["word_matching", "word_overlap", "character_similarity"]
+AttributeField = Annotated[str, Field(min_length=1, max_length=200)]
 
 
 class CustomParams(_Params):
@@ -166,6 +167,13 @@ class CustomParams(_Params):
     )
     top_n: int = Field(300, ge=10, le=2000)
     max_team_categories: int = Field(12, ge=1, le=50)
+    node_attributes: tuple[AttributeField, ...] = Field(
+        DEFAULT_NODE_ATTRIBUTES,
+        max_length=200,
+        description="Fields added to each node for attribute search: a column name or "
+        "a derived field ('country', 'articles'); each node gets the most common values "
+        "among its articles. Fields missing from the data are skipped.",
+    )
 
     @model_validator(mode="after")
     def _valid_combination(self) -> CustomParams:
@@ -229,6 +237,16 @@ class LinkOption(BaseModel):
     reason: str | None
 
 
+class AttributeOption(BaseModel):
+    key: str = Field(description="What node_attributes takes: a column name or a derived field")
+    label: str
+    attr_key: str = Field(description="The key it gets in a node's attr")
+    fill_pct: float | None = Field(description="% of articles with a value (from the profile)")
+    not_for: list[EntityName] = Field(
+        description="Entities whose nodes come from this same field (not added to them)"
+    )
+
+
 class ModelOption(BaseModel):
     key: ModelName
     label: str
@@ -242,6 +260,10 @@ class NetworkOptionsOut(BaseModel):
     entities: list[EntityOption]
     links: list[LinkOption]
     models: list[ModelOption]
+    attributes: list[AttributeOption] = Field(
+        description="Every field a node attribute can come from: derived ones, then the "
+        "dataset's columns (only the defaults while the profile isn't ready)"
+    )
     defaults: CustomParams
 
 

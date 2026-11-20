@@ -186,9 +186,14 @@ def test_every_combination_the_synthetic_data_supports_builds_a_valid_network():
 
 def test_nodes_carry_article_counts_and_edges_their_evidence():
     articles = prepare_articles(synthetic_wos_df())
-    network = custom_network(
-        articles, CustomParams(entity="country", link="keywords", min_shared=1, max_item_df=1.0)
+    params = CustomParams(
+        entity="country",
+        link="keywords",
+        min_shared=1,
+        max_item_df=1.0,
+        node_attributes=("articles",),
     )
+    network = custom_network(articles, params)
     assert all(n["attr"]["articles"] >= 1 for n in network["nodes"])
     assert network["edges"] and all(e["attr"]["evidence"] for e in network["edges"])
 
@@ -226,3 +231,92 @@ def test_min_weight_drops_weak_links_but_keeps_nodes():
     assert set(G2) == set(G1)
     assert all(w >= cut for _, _, w in G2.edges(data="weight"))
     assert G2.number_of_edges() == sum(1 for w in weights if w >= cut) < G1.number_of_edges()
+
+
+# ------------------------------------------------------------------ node attributes
+
+
+def _with_research_areas(articles: pd.DataFrame) -> pd.DataFrame:
+    areas = ["Oncology; Radiology", "Oncology", "Cardiology; Oncology", "Radiology"]
+    return articles.assign(**{"Research Areas": [areas[i % 4] for i in range(len(articles))]})
+
+
+JOURNALS = CustomParams(entity="journal", link="keywords", min_shared=1, max_item_df=1.0)
+
+
+def test_default_attributes_are_the_most_common_values_of_the_nodes_articles():
+    articles = _with_research_areas(prepare_articles(synthetic_wos_df()))
+    G = build_custom_graph(articles, JOURNALS)
+    by_journal: dict[str, list[int]] = {}
+    for i, journal in enumerate(articles["Source Title"]):
+        by_journal.setdefault(journal, []).append(i)
+    for node, data in G.nodes(data=True):
+        rows = articles.iloc[by_journal[node]]
+        years = sorted({str(int(y)) for y in rows["Publication Year"]})
+        assert data["publication_year"] == years[:3] or len(years) > 3
+        assert set(data["document_type"]) <= set(rows["Document Type"])
+        assert 1 <= len(data["research_areas"]) <= custom.TOP_ATTRIBUTE_VALUES
+        assert data["country"]  # derived from the authors' addresses
+        assert "articles" not in data  # only when asked for
+        assert "wos_categories" not in data  # not in this data: skipped
+
+
+def test_any_column_can_be_an_attribute_and_long_values_are_cut():
+    articles = prepare_articles(synthetic_wos_df())
+    params = dataclasses.replace(
+        JOURNALS, node_attributes=("Article Title", "articles", "No Such Column")
+    )
+    G = build_custom_graph(articles, params)
+    for _, data in G.nodes(data=True):
+        assert set(data) <= {"display_name", "publisher", "article_title", "articles"}
+        assert all(len(v) <= custom.MAX_ATTRIBUTE_CHARS for v in data["article_title"])
+        assert data["articles"] >= 1
+    assert custom._cell_values("x" * 200)[0].endswith("…")
+    assert custom._cell_values(2024.0) == ["2024"]
+    assert custom._cell_values("A; B;; a") == ["A", "B"]
+
+
+def test_attribute_keys_and_labels():
+    assert custom.attribute_key("Research Areas") == "research_areas"
+    assert custom.attribute_key("Times Cited, WoS Core") == "times_cited_wos_core"
+    assert custom.attribute_key("country") == "country"
+    assert custom.attribute_label("country") == "Country (from Addresses)"
+    assert custom.attribute_label("Publisher") == "Publisher"
+
+
+def test_top_values_are_most_common_first_with_a_stable_tie_order():
+    from collections import Counter
+
+    counts = Counter({"b": 2, "a": 2, "c": 5, "d": 1})
+    assert custom._top_values(counts, sort_values=False) == ["c", "a", "b"]
+    years = Counter({"2025": 3, "2019": 2, "2024": 2, "1999": 1})
+    assert custom._top_values(years, sort_values=True) == ["2019", "2024", "2025"]
+
+
+def test_entity_attributes_win_and_own_field_attributes_are_skipped():
+    articles = _with_research_areas(prepare_articles(synthetic_wos_df()))
+    authors = build_custom_graph(articles, CustomParams(entity="author", link="same_article"))
+    # An author's country is their own address country, not a list of co-authors' countries.
+    assert all(isinstance(d["country"], str) for _, d in authors.nodes(data=True) if "country" in d)
+    assert any(isinstance(d.get("research_areas"), list) for _, d in authors.nodes(data=True))
+
+    assert custom.node_attribute_problem("country", "country")
+    assert custom.node_attribute_problem("research_area", "Research Areas")
+    assert custom.node_attribute_problem("funder", "country") is None
+    countries = build_custom_graph(
+        articles, CustomParams(entity="country", link="keywords", min_shared=1, max_item_df=1.0)
+    )
+    assert all("country" not in d for _, d in countries.nodes(data=True))
+
+
+def test_no_attributes_leaves_only_the_entitys_own():
+    articles = prepare_articles(synthetic_wos_df())
+    bare = build_custom_graph(articles, dataclasses.replace(JOURNALS, node_attributes=()))
+    assert all(set(d) <= {"display_name", "publisher"} for _, d in bare.nodes(data=True))
+
+
+def test_network_json_carries_list_attributes():
+    articles = _with_research_areas(prepare_articles(synthetic_wos_df()))
+    network = custom_network(articles, JOURNALS)
+    attrs = [n["attr"] for n in network["nodes"]]
+    assert all(isinstance(a["research_areas"], list) and a["research_areas"] for a in attrs)
