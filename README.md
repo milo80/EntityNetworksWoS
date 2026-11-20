@@ -1,7 +1,51 @@
-# EntityNetworks
+# Entity Networks
 
-Turns Web of Science (WoS) bibliometric exports into interactive researcher /
-institution networks (co-authorship, shared-keyword collaboration).
+**See who works on what, and who works with whom.**
+Entity Networks turns your Web of Science (WoS) search results into interactive maps
+of people, institutions and topics. Export the records from WoS, upload the files, and
+explore the network in your browser. No programming needed.
+
+![Entity Networks: exploring a network, filtering it, viewing the data and building a custom network](docs/images/demo.gif)
+
+## Who it is for
+
+- **Researchers in any field** who want to find potential co-workers, research groups,
+  universities and institutions that work on topics close to their own.
+- **WoS users** who want to go beyond a list of articles and see the connections
+  behind it.
+- **Librarians** who support research with WoS: map a department's collaborations,
+  show which institutions or funders are active in a field, or help a researcher find
+  partners.
+
+## What you can do
+
+1. **Upload a WoS export** (the `.xls` files WoS saves) as a dataset.
+2. **See what's in it**: the data page lists the authors, institutions, countries,
+   journals, funders, categories and research areas the records contain, with the most
+   frequent values.
+3. **Build a network** with one click:
+   - *Co-authorship*: authors linked when they publish together.
+   - *Institutions by shared keywords*: institutions linked when they publish on the
+     same specific topics, even if they never wrote together. This is a good way to
+     find partners you don't know yet.
+   - *Custom*: choose the nodes (authors, institutions, countries, journals, funders,
+     categories, research areas, articles), what links them (shared keywords,
+     categories, funders, similar titles or abstracts, being on the same article), and
+     how strict the match must be.
+4. **Explore it**: zoom and pan, color by group, filter, search by name or by
+   attribute (for example country or research area), keep only the strongest links,
+   and click any node or link to see why it is there. Download the network as JSON to
+   use it in other tools.
+
+## Coming next
+
+Today Entity Networks reads Web of Science exports. Support for **more repositories
+and their formats** (other bibliographic databases and schemas) is in the working
+plan.
+
+---
+
+The rest of this file is for developers: layout, setup, tests and the API.
 
 ## Layout
 
