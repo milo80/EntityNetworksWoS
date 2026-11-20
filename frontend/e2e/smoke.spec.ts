@@ -59,7 +59,8 @@ test("upload, build and explore a network", async ({ page }, testInfo) => {
   const build = page.getByRole("form", { name: "Build network" });
   await build.getByLabel("Relationship").selectOption("author");
   await build.getByRole("button", { name: "Build network" }).click();
-  await page.getByRole("link", { name: "Explore" }).click({ timeout: 60_000 });
+  // The run row's button (in main), not the Explore tab in the top bar.
+  await page.getByRole("main").getByRole("link", { name: "Explore" }).click({ timeout: 60_000 });
 
   await expect(page.getByText(/^Laying out/)).toBeHidden({ timeout: 30_000 });
   await expect(page.getByText(/^\d+ of \d+ nodes · \d+ of \d+ links shown$/)).toBeVisible();
