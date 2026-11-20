@@ -12,7 +12,7 @@ cffi==2.1.1
 click==8.5.1
 dnspython==2.9.2
 email-validator==2.3.0
-fastapi==0.162.5
+fastapi==0.163.2
 h11==0.16.0
 httpcore2==2.16.2
 httptools==0.9.0
