@@ -110,6 +110,19 @@ class DatasetFile(Base):
     dataset: Mapped[Dataset] = relationship(back_populates="files")
 
 
+class DatasetRecord(Base):
+    """One article row of a dataset's uploaded files (pipeline.records), stored by the
+    worker so the API can filter, sort and page them without reading the files."""
+
+    __tablename__ = "dataset_records"
+
+    dataset_id: Mapped[int] = mapped_column(
+        ForeignKey("datasets.id", ondelete="CASCADE"), primary_key=True
+    )
+    position: Mapped[int] = mapped_column(Integer, primary_key=True)  # 0-based, upload order
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB)  # column -> value, empty ones left out
+
+
 class NetworkRun(Base):
     """One pipeline execution: dataset + relation + parameters -> network JSON.
 
@@ -142,4 +155,12 @@ class NetworkRun(Base):
     )
 
 
-__all__ = ["RUN_STATUSES", "Dataset", "DatasetFile", "NetworkRun", "User", "UserSession"]
+__all__ = [
+    "RUN_STATUSES",
+    "Dataset",
+    "DatasetFile",
+    "DatasetRecord",
+    "NetworkRun",
+    "User",
+    "UserSession",
+]

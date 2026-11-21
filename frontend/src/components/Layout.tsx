@@ -14,12 +14,15 @@ export function Layout() {
   const datasetMatch = useMatch("/datasets/:datasetId/*");
   const onDataPage = useMatch("/datasets/:datasetId/data") !== null;
   const onDataIndex = useMatch("/data") !== null;
+  const onRecordsPage = useMatch("/datasets/:datasetId/records") !== null;
+  const onRecordsIndex = useMatch("/records") !== null;
+  const onRecords = onRecordsPage || onRecordsIndex;
   const runId = useMatch("/runs/:runId")?.params.runId;
   const onExploreIndex = useMatch("/explore") !== null;
   const onLocal = useMatch("/local") !== null;
   const onExplore = runId !== undefined || onExploreIndex || onLocal;
   const dataActive = onDataPage || onDataIndex;
-  const active = dataActive ? "data" : onExplore ? "explore" : "datasets";
+  const active = dataActive ? "data" : onExplore ? "explore" : onRecords ? "records" : "datasets";
   // In the explorer the dataset is the open network's (cached by its page).
   const run = useQuery({
     queryKey: ["run", Number(runId)],
@@ -29,6 +32,7 @@ export function Layout() {
   const datasetId = datasetMatch?.params.datasetId ?? run.data?.dataset_id;
   const dataTarget = datasetId ? `/datasets/${datasetId}/data` : "/data";
   const exploreTarget = datasetId ? `/explore?dataset=${datasetId}` : "/explore";
+  const recordsTarget = datasetId ? `/datasets/${datasetId}/records` : "/records";
   const tab = (name: typeof active) => ({
     className: active === name ? "active" : undefined,
     "aria-current": active === name ? ("page" as const) : undefined,
@@ -60,6 +64,9 @@ export function Layout() {
           </Link>
           <Link to={exploreTarget} {...tab("explore")}>
             Explore
+          </Link>
+          <Link to={recordsTarget} {...tab("records")}>
+            Records
           </Link>
         </nav>
       </header>

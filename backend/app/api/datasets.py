@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -22,7 +23,11 @@ from ..schemas.api import (
     LinkOption,
     ModelOption,
     NetworkOptionsOut,
+    RecordFilter,
+    RecordOut,
+    RecordsPageOut,
 )
+from ..services.records import RecordsQueryError, check_filter_size, get_record, query_records
 from ..services.storage import UploadRejected, dataset_dir, remove_dataset_dir, save_upload
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
@@ -182,6 +187,83 @@ def get_network_options(dataset_id: int, user: CurrentUser, db: Db) -> NetworkOp
         attributes=attributes,
         defaults=CustomParams(),
     )
+
+
+MAX_RECORD_FILTERS = 20
+MAX_RECORD_COLUMNS = 300
+_FILTERS = TypeAdapter(list[RecordFilter])
+
+
+def _parse_filters(raw: str | None) -> list[RecordFilter]:
+    if not raw:
+        return []
+    try:
+        filters = _FILTERS.validate_json(raw)
+    except ValidationError as exc:
+        msg = exc.errors()[0]["msg"] if exc.errors() else "invalid"
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"filters: {msg}") from exc
+    if len(filters) > MAX_RECORD_FILTERS:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"At most {MAX_RECORD_FILTERS} filters"
+        )
+    try:
+        check_filter_size(filters)
+    except RecordsQueryError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    return filters
+
+
+@router.get("/{dataset_id}/records", response_model=RecordsPageOut)
+def list_records(
+    dataset_id: int,
+    user: CurrentUser,
+    db: Db,
+    page: Annotated[int, Query(ge=1, le=1_000_000)] = 1,
+    filters: Annotated[
+        str | None,
+        Query(
+            max_length=20_000,
+            description='JSON list of {"column", "op", "value"} (RecordFilter); rows are ANDed',
+        ),
+    ] = None,
+    sort: Annotated[str | None, Query(max_length=300, description="Column to sort by")] = None,
+    order: Annotated[Literal["asc", "desc"], Query()] = "asc",
+    columns: Annotated[
+        list[str] | None,
+        Query(
+            max_length=MAX_RECORD_COLUMNS,
+            description=f"Columns to return (default: all; at most {MAX_RECORD_COLUMNS})",
+        ),
+    ] = None,
+) -> RecordsPageOut:
+    """One page (50) of the dataset's article rows, filtered and sorted on the server.
+
+    Without a sort, records come in upload order; empty values sort last both ways.
+    Poll while status is 'pending'.
+    """
+    dataset = get_owned_dataset(db, user.id, dataset_id)
+    try:
+        return query_records(
+            db,
+            dataset,
+            page=page,
+            filters=_parse_filters(filters),
+            sort=sort,
+            descending=order == "desc",
+            columns=columns or [],
+        )
+    except RecordsQueryError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+
+
+@router.get("/{dataset_id}/records/{index}", response_model=RecordOut)
+def get_dataset_record(dataset_id: int, index: int, user: CurrentUser, db: Db) -> RecordOut:
+    """One record with every column, including the derived ones."""
+    dataset = get_owned_dataset(db, user.id, dataset_id)
+    record = get_record(db, dataset, index)
+    if record is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Record not found")
+    return record
 
 
 @router.delete("/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)

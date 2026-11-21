@@ -6,6 +6,7 @@ import { api } from "../api/client";
 import { ErrorNote } from "../components/common";
 import { Explorer } from "../components/explorer/Explorer";
 import { forgetNetwork, lastNetwork, rememberNetwork } from "../lib/lastNetwork";
+import type { RecordsSource } from "../lib/records";
 import { useLocalNetwork } from "../lib/localNetwork";
 import { runTitle, useNetworkOptions } from "../lib/runLabels";
 
@@ -47,6 +48,19 @@ export function RunExplorerPage() {
   if (network.isError) return <PageMessage error={network.error} />;
   if (!network.data || !run.data) return <p className="empty">Loading network…</p>;
 
+  const p = run.data.params as Record<string, unknown>;
+  const records: RecordsSource = {
+    datasetId: run.data.dataset_id,
+    // Co-authorship nodes are authors; the institution-keyword network's nodes are
+    // "institution — department" groups, which no records column holds.
+    entity:
+      run.data.relation === "custom"
+        ? String(p.entity)
+        : run.data.relation === "author"
+          ? "author"
+          : undefined,
+    link: run.data.relation === "custom" ? String(p.link) : undefined,
+  };
   const title = `${runTitle(run.data, options.data)}${
     dataset.data ? ` · ${dataset.data.name}` : ""
   }`;
@@ -54,6 +68,7 @@ export function RunExplorerPage() {
     <Explorer
       network={network.data}
       title={title}
+      records={records}
       back={
         <Link to={`/datasets/${run.data.dataset_id}`} className="back">
           ← {dataset.data?.name ?? "Dataset"}

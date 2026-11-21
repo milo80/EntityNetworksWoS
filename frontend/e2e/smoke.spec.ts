@@ -2,6 +2,7 @@
 // network, explore it, delete the dataset. Also fails on any console error or
 // uncaught exception - which is how a Content-Security-Policy violation shows up.
 import { expect, test, type Page } from "@playwright/test";
+import fs from "node:fs";
 import path from "node:path";
 
 const XLS = path.resolve(import.meta.dirname, "../../backend/tests/fixtures/synthetic_wos.xls");
@@ -73,5 +74,90 @@ test("upload, build and explore a network", async ({ page }, testInfo) => {
   await expect(page.getByRole("heading", { name: "Datasets" })).toBeVisible();
   await expect(page.getByRole("link", { name })).toHaveCount(0);
 
+  expect(errors).toEqual([]);
+});
+
+// REQ-REC-5: from a keyword link between two institutions to the records behind
+// it. The dataset and network are set up through the API (the journey above
+// covers the forms); the check itself goes through the UI.
+test("check a link's records from the explorer", async ({ page }, testInfo) => {
+  const errors = collectErrors(page);
+  await page.goto("/");
+  await page.getByLabel("Email").fill(EMAIL);
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page.getByRole("heading", { name: "Datasets" })).toBeVisible();
+
+  const csrf = (await page.context().cookies()).find((c) => c.name === "entitynet_csrf")!.value;
+  const headers = { "X-CSRF-Token": csrf };
+  const upload = await page.request.post("/api/datasets", {
+    headers,
+    multipart: {
+      name: `e2e records ${testInfo.project.name} ${Date.now()}`,
+      files: {
+        name: "synthetic_wos.xls",
+        mimeType: "application/vnd.ms-excel",
+        buffer: fs.readFileSync(XLS),
+      },
+    },
+  });
+  expect(upload.status(), await upload.text()).toBe(201);
+  const dataset = (await upload.json()) as { id: number };
+  try {
+    // Institutions linked by 3 shared keywords (all items eligible on 6 articles).
+    const created = await page.request.post("/api/runs", {
+      headers,
+      data: {
+        dataset_id: dataset.id,
+        relation: "custom",
+        params: { entity: "institution", link: "keywords", min_shared: 3, max_item_df: 1 },
+      },
+    });
+    expect(created.status(), await created.text()).toBe(202);
+    const run = (await created.json()) as { id: number };
+    await expect
+      .poll(async () => (await (await page.request.get(`/api/runs/${run.id}`)).json()).status, {
+        timeout: 60_000,
+      })
+      .toBe("succeeded");
+
+    await page.goto(`/runs/${run.id}`);
+    await expect(page.getByText(/^Laying out/)).toBeHidden({ timeout: 30_000 });
+    // Links are drawn on a canvas: select one through Cytoscape, as a tap would.
+    const shared = await page.locator(".graph-canvas").evaluate((el) => {
+      type Cy = {
+        edges: () => { length: number; first: () => { emit: (e: string) => void } };
+      };
+      const cy = (el as unknown as { _cyreg: { cy: Cy } })._cyreg.cy;
+      const edges = cy.edges();
+      if (!edges.length) return false;
+      edges.first().emit("tap");
+      return true;
+    });
+    expect(shared, "the network has a link").toBe(true);
+    const toggle = page.getByRole("button", { name: "Details" });
+    if (await toggle.isVisible()) await toggle.click(); // tablet: the panel is a drawer
+    const details = page.getByRole("complementary", { name: "Details" });
+    await expect(details.getByRole("heading", { level: 2 })).toContainText(" — ");
+    await details.getByRole("link", { name: "Show records" }).click();
+
+    await expect(page.getByRole("heading", { name: "Records" })).toBeVisible();
+    await expect(page.getByText(/keeps at most 20 shared items per link/)).toBeVisible();
+    await expect(page.getByText(/^[1-9]\d* of 6 records$/)).toBeVisible();
+    const table = page.getByRole("table");
+    await expect(
+      table.getByRole("columnheader", { name: /Keywords \(normalized\)/ }),
+    ).toBeVisible();
+    // The shared keywords are highlighted in the records that carry them.
+    const marks = table.locator("td mark");
+    await expect(marks.first()).toBeVisible();
+    const marked = await marks.allTextContents();
+    expect(
+      marked.some((m) => /ultrasound|learning|oncology|failure|citespace|bibliometric/.test(m)),
+    ).toBe(true);
+    await testInfo.attach("records", { body: await page.screenshot(), contentType: "image/png" });
+  } finally {
+    await page.request.delete(`/api/datasets/${dataset.id}`, { headers });
+  }
   expect(errors).toEqual([]);
 });

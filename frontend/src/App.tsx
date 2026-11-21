@@ -7,6 +7,7 @@ import { DataIndexPage, DatasetDataPage } from "./pages/DatasetDataPage";
 import { DatasetPage } from "./pages/DatasetPage";
 import { DatasetsPage } from "./pages/DatasetsPage";
 import { LoginPage } from "./pages/LoginPage";
+import { RecordsIndexPage, RecordsPage } from "./pages/RecordsPage";
 import { ForgotPasswordPage, ResetPasswordPage } from "./pages/PasswordResetPages";
 
 // The explorer pulls in Cytoscape (most of the bundle): load it only when needed.
@@ -41,6 +42,8 @@ export function App() {
         <Route path="/datasets/:datasetId" element={<DatasetPage />} />
         <Route path="/datasets/:datasetId/data" element={<DatasetDataPage />} />
         <Route path="/data" element={<DataIndexPage />} />
+        <Route path="/datasets/:datasetId/records" element={<RecordsPage />} />
+        <Route path="/records" element={<RecordsIndexPage />} />
         <Route
           path="/explore"
           element={

@@ -69,3 +69,23 @@ def test_delete_dataset_removes_files_and_runs(client, settings):
     assert client.delete(f"/api/datasets/{ds['id']}").status_code == 204
     assert not (settings.upload_dir / str(ds["id"])).exists()
     assert client.get(f"/api/runs/{run['id']}").status_code == 404
+
+
+def test_delete_dataset_removes_its_records(client, db, settings, monkeypatch):
+    from sqlalchemy import func, select
+
+    from app.models import DatasetRecord
+    from app.worker import profile_next_dataset
+
+    from ..fixtures.synthetic_wos import synthetic_wos_df
+
+    monkeypatch.setattr("app.worker.read_wos_files", lambda files: synthetic_wos_df())
+    ds, other = upload(client).json(), upload(client, name="Other").json()
+    profile_next_dataset(db, settings)
+    profile_next_dataset(db, settings)
+    count = lambda i: db.scalar(select(func.count()).where(DatasetRecord.dataset_id == i))
+    assert count(ds["id"]) == count(other["id"]) == 6
+
+    assert client.delete(f"/api/datasets/{ds['id']}").status_code == 204
+    assert count(ds["id"]) == 0 and count(other["id"]) == 6
+    assert client.get(f"/api/datasets/{ds['id']}/records").status_code == 404

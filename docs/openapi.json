@@ -447,6 +447,187 @@
         }
       }
     },
+    "/api/datasets/{dataset_id}/records": {
+      "get": {
+        "tags": [
+          "datasets"
+        ],
+        "summary": "List Records",
+        "description": "One page (50) of the dataset's article rows, filtered and sorted on the server.\n\nWithout a sort, records come in upload order; empty values sort last both ways.\nPoll while status is 'pending'.",
+        "operationId": "list_records_api_datasets__dataset_id__records_get",
+        "parameters": [
+          {
+            "name": "dataset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Dataset Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000000,
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "filters",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "JSON list of {\"column\", \"op\", \"value\"} (RecordFilter); rows are ANDed",
+              "title": "Filters"
+            },
+            "description": "JSON list of {\"column\", \"op\", \"value\"} (RecordFilter); rows are ANDed"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Column to sort by",
+              "title": "Sort"
+            },
+            "description": "Column to sort by"
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string",
+              "default": "asc",
+              "title": "Order"
+            }
+          },
+          {
+            "name": "columns",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 300
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Columns to return (default: all; at most 300)",
+              "title": "Columns"
+            },
+            "description": "Columns to return (default: all; at most 300)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordsPageOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/datasets/{dataset_id}/records/{index}": {
+      "get": {
+        "tags": [
+          "datasets"
+        ],
+        "summary": "Get Dataset Record",
+        "description": "One record with every column, including the derived ones.",
+        "operationId": "get_dataset_record_api_datasets__dataset_id__records__index__get",
+        "parameters": [
+          {
+            "name": "dataset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Dataset Id"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Index"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/runs": {
       "post": {
         "tags": [
@@ -1788,6 +1969,142 @@
           "email"
         ],
         "title": "PasswordResetRequest"
+      },
+      "RecordColumnOut": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "derived": {
+            "type": "boolean",
+            "title": "Derived",
+            "description": "Computed like the networks do; not in the export"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "text, number, boolean or date (sorting compares numbers)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "derived",
+          "type"
+        ],
+        "title": "RecordColumnOut"
+      },
+      "RecordOut": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "title": "Index",
+            "description": "0-based position in upload order"
+          },
+          "values": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Values",
+            "description": "Column -> value; empty ones left out"
+          }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "values"
+        ],
+        "title": "RecordOut"
+      },
+      "RecordsPageOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "ready",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/RecordColumnOut"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Records in the dataset"
+          },
+          "matching": {
+            "type": "integer",
+            "title": "Matching",
+            "description": "Records that match the filters"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/RecordOut"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "ignored_filter_columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ignored Filter Columns",
+            "description": "Filters on columns the dataset doesn't have, which were dropped"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "error",
+          "columns",
+          "total",
+          "matching",
+          "page",
+          "page_size",
+          "rows",
+          "ignored_filter_columns"
+        ],
+        "title": "RecordsPageOut",
+        "description": "One page of a dataset's records; status/error mirror the profile's."
       },
       "Registration": {
         "properties": {

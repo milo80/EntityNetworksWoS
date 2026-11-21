@@ -208,6 +208,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/{dataset_id}/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Records
+         * @description One page (50) of the dataset's article rows, filtered and sorted on the server.
+         *
+         *     Without a sort, records come in upload order; empty values sort last both ways.
+         *     Poll while status is 'pending'.
+         */
+        get: operations["list_records_api_datasets__dataset_id__records_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/datasets/{dataset_id}/records/{index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Dataset Record
+         * @description One record with every column, including the derived ones.
+         */
+        get: operations["get_dataset_record_api_datasets__dataset_id__records__index__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs": {
         parameters: {
             query?: never;
@@ -775,6 +818,72 @@ export interface components {
              */
             email: string;
         };
+        /** RecordColumnOut */
+        RecordColumnOut: {
+            /** Name */
+            name: string;
+            /**
+             * Derived
+             * @description Computed like the networks do; not in the export
+             */
+            derived: boolean;
+            /**
+             * Type
+             * @description text, number, boolean or date (sorting compares numbers)
+             */
+            type: string;
+        };
+        /** RecordOut */
+        RecordOut: {
+            /**
+             * Index
+             * @description 0-based position in upload order
+             */
+            index: number;
+            /**
+             * Values
+             * @description Column -> value; empty ones left out
+             */
+            values: {
+                [key: string]: string | number;
+            };
+        };
+        /**
+         * RecordsPageOut
+         * @description One page of a dataset's records; status/error mirror the profile's.
+         */
+        RecordsPageOut: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "ready" | "failed";
+            /** Error */
+            error: string | null;
+            /** Columns */
+            columns: components["schemas"]["RecordColumnOut"][];
+            /**
+             * Total
+             * @description Records in the dataset
+             */
+            total: number;
+            /**
+             * Matching
+             * @description Records that match the filters
+             */
+            matching: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Rows */
+            rows: components["schemas"]["RecordOut"][];
+            /**
+             * Ignored Filter Columns
+             * @description Filters on columns the dataset doesn't have, which were dropped
+             */
+            ignored_filter_columns: string[];
+        };
         /** Registration */
         Registration: {
             /**
@@ -1215,6 +1324,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NetworkOptionsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_records_api_datasets__dataset_id__records_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                /** @description JSON list of {"column", "op", "value"} (RecordFilter); rows are ANDed */
+                filters?: string | null;
+                /** @description Column to sort by */
+                sort?: string | null;
+                order?: "asc" | "desc";
+                /** @description Columns to return (default: all; at most 300) */
+                columns?: string[] | null;
+            };
+            header?: never;
+            path: {
+                dataset_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordsPageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_dataset_record_api_datasets__dataset_id__records__index__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dataset_id: number;
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordOut"];
                 };
             };
             /** @description Validation Error */

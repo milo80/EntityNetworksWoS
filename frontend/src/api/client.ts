@@ -14,6 +14,23 @@ export type AuthorParams = S["AuthorParams"];
 export type InstitutionKeywordParams = S["InstitutionKeywordParams"];
 export type CustomParams = S["CustomParams"];
 export type NetworkOptions = S["NetworkOptionsOut"];
+export type RecordsPage = S["RecordsPageOut"];
+export type RecordItem = S["RecordOut"];
+export type RecordColumn = S["RecordColumnOut"];
+/** One filter row, sent JSON-encoded in `filters` (backend schemas.api.RecordFilter). */
+export type RecordOperator = "contains" | "not_contains" | "has_item" | "is_empty" | "not_empty";
+export interface RecordFilter {
+  column: string;
+  op: RecordOperator;
+  value: string;
+}
+export interface RecordsQuery {
+  page: number;
+  filters: RecordFilter[];
+  sort?: string;
+  order?: "asc" | "desc";
+  columns?: string[];
+}
 export type Relation = Run["relation"] & ("author" | "institution_keywords" | "custom");
 export type RunCreate =
   | { dataset_id: number; relation: "author"; params?: Partial<AuthorParams> }
@@ -94,6 +111,17 @@ export const api = {
   getDataset: (id: number) => request<Dataset>(`/datasets/${id}`),
   getProfile: (id: number) => request<DatasetProfileResponse>(`/datasets/${id}/profile`),
   getNetworkOptions: (id: number) => request<NetworkOptions>(`/datasets/${id}/network-options`),
+  getRecords: (id: number, q: RecordsQuery) => {
+    const params = new URLSearchParams({ page: String(q.page) });
+    if (q.filters.length) params.set("filters", JSON.stringify(q.filters));
+    if (q.sort) {
+      params.set("sort", q.sort);
+      params.set("order", q.order ?? "asc");
+    }
+    for (const c of q.columns ?? []) params.append("columns", c);
+    return request<RecordsPage>(`/datasets/${id}/records?${params}`);
+  },
+  getRecord: (id: number, index: number) => request<RecordItem>(`/datasets/${id}/records/${index}`),
   uploadDataset: (name: string, files: File[]) => {
     const form = new FormData();
     form.append("name", name);

@@ -21,20 +21,11 @@ import {
   type Profile,
 } from "../components/catalog";
 import { ErrorNote, Status, formatDate, formatNumber } from "../components/common";
+import { KEY_COLUMNS } from "../lib/records";
 import { DATASETS_KEY } from "./DatasetsPage";
 
 /** The data page shows the top 10 of each catalog list (the build form 20). */
 const DATA_TOP = 10;
-
-const KEY_COLUMNS = [
-  "UT (Unique WOS ID)",
-  "Article Title",
-  "Author Full Names",
-  "Publication Year",
-  "Document Type",
-  "Source Title",
-  "Author Keywords",
-];
 
 export function DatasetDataPage() {
   const datasetId = Number(useParams().datasetId);
@@ -76,9 +67,9 @@ export function DatasetDataPage() {
   );
 }
 
-const useDatasets = () => useQuery({ queryKey: DATASETS_KEY, queryFn: api.listDatasets });
+export const useDatasets = () => useQuery({ queryKey: DATASETS_KEY, queryFn: api.listDatasets });
 
-const newestFirst = (a: Dataset, b: Dataset) => b.created_at.localeCompare(a.created_at);
+export const newestFirst = (a: Dataset, b: Dataset) => b.created_at.localeCompare(a.created_at);
 
 /** "View data" without a dataset: open the newest one's data page. */
 export function DataIndexPage() {
@@ -103,8 +94,14 @@ export function DataIndexPage() {
   );
 }
 
-/** Every loaded dataset, to switch the data page between them. */
-function DatasetList({ currentId }: { currentId: number }) {
+/** Every loaded dataset, to switch the data (or records) page between them. */
+export function DatasetList({
+  currentId,
+  page = "data",
+}: {
+  currentId: number;
+  page?: "data" | "records";
+}) {
   const datasets = useDatasets();
   return (
     <nav className="dataset-list" aria-label="Datasets">
@@ -114,7 +111,7 @@ function DatasetList({ currentId }: { currentId: number }) {
         {[...(datasets.data ?? [])].sort(newestFirst).map((d) => (
           <li key={d.id}>
             <Link
-              to={`/datasets/${d.id}/data`}
+              to={`/datasets/${d.id}/${page}`}
               aria-current={d.id === currentId ? "page" : undefined}
             >
               <span className="dataset-list-name">{d.name}</span>

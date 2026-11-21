@@ -1,10 +1,12 @@
 // Explorer behavior through real user interaction (DOM events via user-event).
 // Cytoscape needs a canvas jsdom doesn't have, so GraphView is replaced by a
 // probe that exposes what the Explorer asked the graph to show.
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
+import type { RecordsSource } from "../../lib/records";
 import { sampleNetwork } from "../../test/fixtures";
 import { Explorer } from "./Explorer";
 
@@ -23,6 +25,9 @@ vi.mock("./GraphView", () => ({
     >
       <button type="button" onClick={() => p.onSelect({ kind: "edge", index: 0 })}>
         tap edge 0
+      </button>
+      <button type="button" onClick={() => p.onSelect({ kind: "node", id: "a" })}>
+        tap node a
       </button>
     </div>
   ),
@@ -212,5 +217,113 @@ describe("Explorer", () => {
     const { filters } = setup({ ...net, edges: net.edges.map((e) => ({ ...e, weight: 1 })) });
     expect(within(filters).getByText("All links have weight 1.")).toBeInTheDocument();
     expect(within(filters).queryByLabelText("Lowest link weight shown")).toBeNull();
+  });
+});
+
+describe("Show records", () => {
+  /** Where "Show records" went: the Records page's path and its filters. */
+  function RecordsProbe() {
+    const { pathname, search } = useLocation();
+    const params = new URLSearchParams(search);
+    return (
+      <div data-testid="records" data-path={pathname} data-from={params.get("from") ?? ""}>
+        {params.getAll("f").join("\n")}
+      </div>
+    );
+  }
+
+  function renderWithRecords(records: RecordsSource, network = sampleNetwork()) {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/runs/5"]}>
+        <Routes>
+          <Route
+            path="/runs/5"
+            element={<Explorer network={network} title="Test network" records={records} />}
+          />
+          <Route path="/datasets/:datasetId/records" element={<RecordsProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    return user;
+  }
+
+  const filtersOf = (el: HTMLElement) =>
+    (el.textContent ?? "").split("\n").map((f) => JSON.parse(f) as string[]);
+
+  it("offers Show records only for nodes whose type maps to a records column", async () => {
+    const mapped = {
+      author: "Author Full Names",
+      institution: "Institutions (parsed)",
+      journal: "Source Title",
+      organization: "Affiliations",
+      funder: "Funding Orgs",
+      wos_category: "WoS Categories",
+      research_area: "Research Areas",
+      article: "UT (Unique WOS ID)",
+    };
+    for (const [entity, column] of Object.entries(mapped)) {
+      const user = renderWithRecords({ datasetId: 7, entity, link: "same_article" });
+      await user.click(screen.getByRole("button", { name: "tap node a" }));
+      const details = screen.getByRole("complementary", { name: "Details" });
+      const link = within(details).getByRole("link", { name: "Show records" });
+      const params = new URL(link.getAttribute("href")!, "http://x").searchParams;
+      expect(JSON.parse(params.get("f")!)[0]).toBe(column);
+      cleanup();
+    }
+    for (const entity of ["country", "corresponding_institution", undefined]) {
+      const user = renderWithRecords({ datasetId: 7, entity, link: "keywords" });
+      await user.click(screen.getByRole("button", { name: "tap node a" }));
+      const details = screen.getByRole("complementary", { name: "Details" });
+      expect(within(details).getByRole("heading", { name: "Rossi, Anna" })).toBeInTheDocument();
+      expect(within(details).queryByRole("link", { name: "Show records" })).toBeNull();
+      cleanup();
+    }
+    // A local file has no dataset: never offered.
+    const { user } = setup();
+    await user.click(screen.getByRole("button", { name: "tap node a" }));
+    expect(screen.queryByRole("link", { name: "Show records" })).toBeNull();
+  });
+
+  it("Show records on a node opens Records filtered on its value", async () => {
+    const user = renderWithRecords({ datasetId: 7, entity: "author", link: "same_article" });
+    await user.click(screen.getByRole("button", { name: "tap node a" }));
+    await user.click(screen.getByRole("link", { name: "Show records" }));
+    const page = screen.getByTestId("records");
+    expect(page.dataset.path).toBe("/datasets/7/records");
+    expect(page.dataset.from).toBe("node"); // the Records page shows the column even if hidden
+    expect(filtersOf(page)).toEqual([["Author Full Names", "contains", "Rossi, Anna"]]);
+  });
+
+  it("Show records on a keyword link filters on both endpoints and the shared items", async () => {
+    const network = sampleNetwork();
+    network.edges[0]!.attr = { evidence: ["deep learning", "fetal ultrasound"] };
+    const cases: [string, string][] = [
+      ["keywords", "Keywords (normalized)"],
+      ["author_keywords", "Author Keywords"],
+      ["keywords_plus", "Keywords Plus"],
+    ];
+    for (const [link, column] of cases) {
+      const user = renderWithRecords({ datasetId: 7, entity: "institution", link }, network);
+      await user.click(screen.getByRole("button", { name: "tap edge 0" }));
+      await user.click(screen.getByRole("link", { name: "Show records" }));
+      const page = screen.getByTestId("records");
+      expect(page.dataset.from).toBe("link");
+      expect(filtersOf(page)).toEqual([
+        ["Institutions (parsed)", "contains", "Rossi, Anna; Bianchi, Marco"],
+        [column, "contains", "deep learning; fetal ultrasound"],
+      ]);
+      cleanup();
+    }
+    // Links on other fields: not offered.
+    const user = renderWithRecords(
+      { datasetId: 7, entity: "institution", link: "wos_categories" },
+      network,
+    );
+    await user.click(screen.getByRole("button", { name: "tap edge 0" }));
+    expect(
+      screen.getByRole("heading", { name: "Rossi, Anna — Bianchi, Marco" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Show records" })).toBeNull();
   });
 });
