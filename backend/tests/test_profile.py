@@ -135,3 +135,68 @@ def test_catalog_lists_the_top_20_values():
     assert journal["distinct"] == n and len(journal["top"]) == 20
     keywords = next(e for e in stats["link_catalog"] if e["key"] == "keywords")
     assert len(keywords["top"]) == 20 and keywords["top"][0] == {"value": "common", "count": n}
+
+
+# ------------------------------------------------------------------ records (REQ-REC)
+
+
+def test_records_keep_every_article_row():
+    """Every row of the exports, in the order given, duplicates kept: the rows the
+    networks are built from, as many as the profile's article count."""
+    from pipeline.records import dataset_records
+
+    one = synthetic_wos_df()
+    df = pd.concat([one, one], ignore_index=True)  # the same file uploaded twice
+    records = dataset_records(df)
+    assert len(records) == len(df) == profile_dataset(df)["stats"]["articles"] == 12
+    assert [r["UT (Unique WOS ID)"] for r in records] == list(df["UT (Unique WOS ID)"])
+    first = records[0]
+    assert first["Publication Year"] == 2025 and type(first["Publication Year"]) is int
+    assert "Keywords Plus" not in first  # empty cells are left out
+    json.dumps(records, allow_nan=False)
+
+    long = pd.DataFrame({"Abstract": ["x" * 5000, float("nan")], "Year": [2024.0, np.nan]})
+    full, empty = dataset_records(long)
+    assert full == {"Abstract": "x" * 5000, "Year": 2024}  # never cut, unlike the sample
+    assert empty == {}
+
+
+def test_parsed_institutions_match_the_network_nodes():
+    from pipeline.custom import CustomParams, custom_network
+    from pipeline.records import INSTITUTIONS_PARSED, dataset_records
+
+    df = synthetic_wos_df()
+    records = dataset_records(df)
+    assert records[0][INSTITUTIONS_PARSED] == "Univ Parma; Mayo Clin"
+    parsed = {i for r in records for i in r[INSTITUTIONS_PARSED].split("; ")}
+    network = custom_network(df, CustomParams(entity="institution", link="same_article"))
+    assert {n["name"] for n in network["nodes"]} == parsed
+
+    no_addresses = dataset_records(df.drop(columns=["Addresses"]))
+    assert all(INSTITUTIONS_PARSED not in r for r in no_addresses)
+
+
+def test_normalized_keywords_match_the_network_items():
+    from pipeline.custom import CustomParams, custom_network
+    from pipeline.records import KEYWORDS_NORMALIZED, dataset_records
+
+    df = pd.DataFrame(
+        {
+            "UT (Unique WOS ID)": ["WOS:1", "WOS:2", "WOS:3"],
+            "Source Title": ["J One", "J Two", "J Three"],
+            "Author Keywords": ["Machine-Learning; Ethics", "machine learning; ethics", None],
+            "Keywords Plus": ["MACHINE LEARNING; Big Data", "BIG-DATA", None],
+        }
+    )
+    records = dataset_records(df)
+    assert records[0][KEYWORDS_NORMALIZED] == "machine learning; ethics; big data"
+    assert records[1][KEYWORDS_NORMALIZED] == "machine learning; ethics; big data"
+    assert KEYWORDS_NORMALIZED not in records[2]
+
+    network = custom_network(
+        df, CustomParams(entity="journal", link="keywords", min_shared=1, max_item_df=1.0)
+    )
+    (edge,) = network["edges"]
+    shared = set(edge["attr"]["evidence"])
+    assert shared == {"machine learning", "ethics", "big data"}
+    assert shared <= set(records[0][KEYWORDS_NORMALIZED].split("; "))

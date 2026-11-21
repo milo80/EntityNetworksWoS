@@ -85,6 +85,49 @@ class DatasetProfileOut(BaseModel):
     profile: dict | None
 
 
+# ---------------------------------------------------------------- records
+
+RECORDS_PAGE_SIZE = 50
+RecordOperator = Literal["contains", "not_contains", "has_item", "is_empty", "not_empty"]
+RecordValue = str | int | float
+
+
+class RecordFilter(BaseModel):
+    """One filter row. ";" separates alternatives in ``value`` (OR); rows combine with AND."""
+
+    model_config = ConfigDict(extra="forbid")
+    column: str = Field(min_length=1, max_length=300)
+    op: RecordOperator
+    value: str = Field("", max_length=5000, description="Ignored by is_empty / not_empty")
+
+
+class RecordColumnOut(BaseModel):
+    name: str
+    derived: bool = Field(description="Computed like the networks do; not in the export")
+    type: str = Field(description="text, number, boolean or date (sorting compares numbers)")
+
+
+class RecordOut(BaseModel):
+    index: int = Field(description="0-based position in upload order")
+    values: dict[str, RecordValue] = Field(description="Column -> value; empty ones left out")
+
+
+class RecordsPageOut(BaseModel):
+    """One page of a dataset's records; status/error mirror the profile's."""
+
+    status: ProfileStatus
+    error: str | None
+    columns: list[RecordColumnOut]
+    total: int = Field(description="Records in the dataset")
+    matching: int = Field(description="Records that match the filters")
+    page: int
+    page_size: int
+    rows: list[RecordOut]
+    ignored_filter_columns: list[str] = Field(
+        description="Filters on columns the dataset doesn't have, which were dropped"
+    )
+
+
 # ---------------------------------------------------------------- runs
 # Defaults mirror pipeline.relations.*Params (a test enforces this). Upper
 # bounds on top_n reflect the browser's comfortable rendering limit.

@@ -4,6 +4,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode
 
 import { groupStyles, orderedTeams, teamCounts } from "../../lib/colors";
 import { attrKeys, type Network } from "../../lib/network";
+import type { RecordsSource } from "../../lib/records";
 import { computeVisibility, initialFilterState, type FilterState } from "../../lib/visibility";
 import { DetailsPanel } from "./DetailsPanel";
 import { FilterPanel } from "./FilterPanel";
@@ -20,12 +21,14 @@ interface Props {
   back?: ReactNode;
   /** Below the graph (e.g. Download). */
   footer?: ReactNode;
+  /** Where the network's records are: enables "Show records" on a selection. */
+  records?: RecordsSource;
 }
 
 const MIN_SIDE = 200;
 const MIN_GRAPH = 320;
 
-export function Explorer({ network, title, actions, back, footer }: Props) {
+export function Explorer({ network, title, actions, back, footer, records }: Props) {
   const styles = useMemo(() => groupStyles(network), [network]);
   const teams = useMemo(() => orderedTeams(network, styles), [network, styles]);
   const counts = useMemo(() => teamCounts(network), [network]);
@@ -172,6 +175,7 @@ export function Explorer({ network, title, actions, back, footer }: Props) {
           visibleNodes={visibleNodes}
           visibleEdges={visibleEdges}
           selected={selected}
+          records={records}
         />
       </aside>
     </div>

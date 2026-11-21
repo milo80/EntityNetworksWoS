@@ -21,17 +21,18 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Connection, Engine, func, or_, select, text, update
+from sqlalchemy import Connection, Engine, delete, func, insert, or_, select, text, update
 from sqlalchemy.orm import Session
 
 from pipeline.custom import NetworkBuildError
 from pipeline.io import WoSReadError, read_wos_files
 from pipeline.profile import PROFILE_VERSION, profile_dataset
+from pipeline.records import dataset_records
 
 from .config import Settings, get_settings
 from .db import get_sessionmaker, utcnow
 from .logging import configure_logging
-from .models import Dataset, NetworkRun
+from .models import Dataset, DatasetRecord, NetworkRun
 from .services.runs import build_network
 from .services.storage import dataset_dir
 
@@ -111,6 +112,25 @@ def dataset_file_paths(dataset: Dataset | None, settings: Settings) -> list[Path
     return [dataset_dir(settings.upload_dir, dataset.id) / f.stored_name for f in ordered]
 
 
+def _profile_and_records(dataset: Dataset, settings: Settings) -> tuple[dict, list[dict]]:
+    """Read the dataset's files once: its profile and its records (nothing stored yet)."""
+    files = dataset_file_paths(dataset, settings)
+    if not files:
+        raise WoSReadError("Dataset has no files")
+    df = read_wos_files(files)
+    return profile_dataset(df), dataset_records(df)
+
+
+def _store_records(db: Session, dataset_id: int, records: list[dict]) -> None:
+    """Replace the dataset's records (in the caller's transaction)."""
+    db.execute(delete(DatasetRecord).where(DatasetRecord.dataset_id == dataset_id))
+    if records:
+        db.execute(
+            insert(DatasetRecord),
+            [{"dataset_id": dataset_id, "position": i, "data": r} for i, r in enumerate(records)],
+        )
+
+
 def profile_next_dataset(db: Session, settings: Settings) -> bool:
     """Compute the profile of one pending dataset. Returns True if one was processed.
 
@@ -127,20 +147,32 @@ def profile_next_dataset(db: Session, settings: Settings) -> bool:
     if dataset is None:
         db.rollback()
         return refresh_outdated_profile(db, settings)
-    files = dataset_file_paths(dataset, settings)
+    dataset_id = dataset.id
     try:
-        if not files:
-            raise WoSReadError("Dataset has no files")
-        dataset.profile = profile_dataset(read_wos_files(files))
+        profile, records = _profile_and_records(dataset, settings)
+        _store_records(db, dataset_id, records)
+        dataset.profile = profile
         dataset.profile_status, dataset.profile_error = "ready", None
+        db.commit()  # inside the try: storing can fail too (e.g. text PostgreSQL rejects)
+        status = "ready"
     except Exception as exc:
-        log.exception("Profiling dataset %d failed", dataset.id)
-        dataset.profile_status = "failed"
-        dataset.profile_error = _user_facing_error(
-            exc, "These files could not be read as WoS exports (see server logs)"
+        log.exception("Profiling dataset %d failed", dataset_id)
+        # The transaction may be aborted: start over, so the failure is recorded and the
+        # dataset isn't picked again forever (which would starve the run queue).
+        db.rollback()
+        db.execute(
+            update(Dataset)
+            .where(Dataset.id == dataset_id, Dataset.profile_status == "pending")
+            .values(
+                profile_status="failed",
+                profile_error=_user_facing_error(
+                    exc, "These files could not be read as WoS exports (see server logs)"
+                ),
+            )
         )
-    db.commit()
-    log.info("Dataset %d profile: %s", dataset.id, dataset.profile_status)
+        db.commit()
+        status = "failed"
+    log.info("Dataset %d profile: %s", dataset_id, status)
     return True
 
 
@@ -182,7 +214,8 @@ def refresh_outdated_profile(db: Session, settings: Settings) -> bool:
     """Recompute one 'ready' profile older than PROFILE_VERSION, in place.
 
     The dataset stays 'ready' and keeps its old profile until the new one is
-    stored, so existing datasets gain new profile content without a migration.
+    stored, so existing datasets gain new profile content without a migration;
+    their records are stored (or replaced) in the same transaction.
     A failure keeps the old profile and is remembered (refresh_failed_version),
     so it isn't retried every iteration.
     """
@@ -203,13 +236,20 @@ def refresh_outdated_profile(db: Session, settings: Settings) -> bool:
     if dataset is None:
         db.rollback()
         return False
+    dataset_id = dataset.id
     try:
-        dataset.profile = profile_dataset(read_wos_files(dataset_file_paths(dataset, settings)))
-        log.info("Dataset %d profile refreshed to version %d", dataset.id, PROFILE_VERSION)
+        profile, records = _profile_and_records(dataset, settings)
+        _store_records(db, dataset_id, records)
+        dataset.profile = profile
+        db.commit()
+        log.info("Dataset %d profile refreshed to version %d", dataset_id, PROFILE_VERSION)
     except Exception:
-        log.exception("Refreshing the profile of dataset %d failed", dataset.id)
-        dataset.profile = {**(dataset.profile or {}), "refresh_failed_version": PROFILE_VERSION}
-    db.commit()
+        log.exception("Refreshing the profile of dataset %d failed", dataset_id)
+        db.rollback()  # the old profile and records stay as they were
+        failed = db.get(Dataset, dataset_id, with_for_update=True)
+        if failed is not None:
+            failed.profile = {**(failed.profile or {}), "refresh_failed_version": PROFILE_VERSION}
+        db.commit()
     return True
 
 

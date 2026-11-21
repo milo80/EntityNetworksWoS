@@ -1,8 +1,9 @@
 // Page-level tests: the whole app (router + React Query) against a fake backend,
 // driven through user events.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 
@@ -32,6 +33,12 @@ const DATASET = {
   profile_error: null,
   files: [{ id: 1, original_name: "WoS_1.xls", size_bytes: 2 * 1024 * 1024, sha256: "x" }],
 };
+
+/** Unmount between two renders in one test (a reload, or another page). */
+function cleanupApp() {
+  cleanup();
+  vi.unstubAllGlobals();
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -880,5 +887,617 @@ describe("build network panel", () => {
     await user.click(within(form).getByRole("button", { name: "Reset" }));
     expect(within(form).getByLabelText("Relationship")).toHaveValue("");
     expect(within(form).queryByLabelText("Maximum nodes")).toBeNull();
+  });
+});
+
+describe("records", () => {
+  type Values = Record<string, string | number>;
+  type Filter = { column: string; op: string; value: string };
+  const DERIVED = [
+    { name: "Institutions (parsed)", derived: true, type: "text" },
+    { name: "Keywords (normalized)", derived: true, type: "text" },
+  ];
+  const COLUMNS = [
+    ...profile.schema.map((c) => ({ name: c.name, derived: false, type: c.type })),
+    ...DERIVED,
+  ];
+  // The synthetic export's six rows, with the derived columns the worker adds.
+  const SYNTHETIC: Values[] = profile.sample.rows.map((row) => {
+    const values: Values = {};
+    profile.sample.columns.forEach((c, i) => {
+      const v = row[i];
+      if (v !== null && v !== undefined && v !== "") values[c] = v as string | number;
+    });
+    values["Institutions (parsed)"] = String(values["Addresses"]).includes("Parma")
+      ? "Univ Parma; Mayo Clin"
+      : "Mayo Clin";
+    values["Keywords (normalized)"] = String(values["Author Keywords"]);
+    return values;
+  });
+  const many = (n: number): Values[] =>
+    Array.from({ length: n }, (_, i) => ({
+      "UT (Unique WOS ID)": `WOS:${i}`,
+      "Article Title": `Title ${i}`,
+      "Source Title": i % 2 ? "Odd journal" : "Even journal",
+    }));
+  const MANY_COLUMNS = ["UT (Unique WOS ID)", "Article Title", "Source Title"].map((name) => ({
+    name,
+    derived: false,
+    type: "text",
+  }));
+
+  const terms = (v: string) =>
+    v
+      .split(";")
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean);
+  const matches = (f: Filter, cell: string | number | undefined) => {
+    const text = cell === undefined ? "" : String(cell).toLowerCase();
+    const ts = terms(f.value);
+    if (f.op === "is_empty") return !text;
+    if (f.op === "not_empty") return !!text;
+    if (!ts.length) return true;
+    if (f.op === "contains") return ts.some((t) => text.includes(t));
+    if (f.op === "not_contains") return !ts.some((t) => text.includes(t));
+    return text.split(";").some((item) => ts.includes(item.trim()));
+  };
+
+  /** A small stand-in for GET /datasets/:id/records (filters, sort, 50 per page). */
+  function recordsApi(rows: Values[], columns = COLUMNS) {
+    return (req: { path: string }) => {
+      const q = new URL(req.path, "http://localhost").searchParams;
+      const page = Number(q.get("page") ?? 1);
+      const filters = JSON.parse(q.get("filters") ?? "[]") as Filter[];
+      const known = new Set(columns.map((c) => c.name));
+      const matched = rows
+        .map((values, index) => ({ index, values }))
+        .filter((r) =>
+          filters.every((f) => !known.has(f.column) || matches(f, r.values[f.column])),
+        );
+      const sort = q.get("sort");
+      if (sort) {
+        const dir = q.get("order") === "desc" ? -1 : 1;
+        const key = (r: { values: Values }) => String(r.values[sort] ?? "").toLowerCase();
+        matched.sort((a, b) =>
+          !key(a) ? 1 : !key(b) ? -1 : dir * key(a).localeCompare(key(b)) || a.index - b.index,
+        );
+      }
+      const wanted = q.getAll("columns").filter((c) => known.has(c));
+      const pick = (v: Values) =>
+        wanted.length ? Object.fromEntries(wanted.filter((c) => c in v).map((c) => [c, v[c]])) : v;
+      return {
+        body: {
+          status: "ready",
+          error: null,
+          columns,
+          total: rows.length,
+          matching: matched.length,
+          page,
+          page_size: 50,
+          rows: matched.slice((page - 1) * 50, page * 50).map((r) => ({
+            index: r.index,
+            values: pick(r.values),
+          })),
+          ignored_filter_columns: [
+            ...new Set(filters.map((f) => f.column).filter((c) => !known.has(c))),
+          ],
+        },
+      };
+    };
+  }
+
+  function recordsApp(path: string, rows: Values[] = SYNTHETIC, columns = COLUMNS) {
+    const OTHER = { ...DATASET, id: 3, name: "Older export", created_at: "2026-10-01T10:00:00Z" };
+    const api = mockApi({
+      "GET /auth/me": () => ({ body: SESSION }),
+      "GET /datasets": () => ({ body: [DATASET, OTHER] }),
+      "GET /datasets/7": () => ({ body: DATASET }),
+      "GET /datasets/3": () => ({ body: OTHER }),
+      "GET /datasets/7/profile": () => ({ body: { status: "ready", error: null, profile } }),
+      "GET /datasets/7/records": recordsApi(rows, columns),
+      "GET /datasets/3/records": recordsApi(rows, columns),
+      "GET /runs/5": () => ({
+        body: {
+          id: 5,
+          dataset_id: 7,
+          relation: "author",
+          params: {},
+          status: "running",
+          error: null,
+          node_count: null,
+          edge_count: null,
+          created_at: "2026-11-12T10:00:00Z",
+          started_at: null,
+          finished_at: null,
+        },
+      }),
+      ...Object.fromEntries(
+        rows.map((values, index) => [
+          `GET /datasets/7/records/${index}`,
+          () => ({ body: { index, values } }),
+        ]),
+      ),
+    });
+    const user = renderApp(path);
+    return { user, ...api };
+  }
+
+  const nav = () => screen.getByRole("navigation", { name: "Main" });
+  const table = () => screen.findByRole("table");
+  const headers = () =>
+    screen
+      .getAllByRole("columnheader")
+      .map((th) => th.querySelector(".th-name")?.textContent ?? "");
+  const bodyRows = () => within(screen.getAllByRole("rowgroup")[1]!).getAllByRole("row");
+  const firstCells = () => bodyRows().map((r) => within(r).getAllByRole("cell")[0]!.textContent);
+  const recordsCalls = (calls: { path: string }[]) =>
+    calls
+      .filter((c) => /^\/datasets\/\d+\/records\?/.test(c.path))
+      .map((c) => new URL(c.path, "http://localhost").searchParams);
+  const openFilters = async (user: ReturnType<typeof userEvent.setup>) =>
+    user.click(screen.getByRole("button", { name: /^Filters/ }));
+
+  afterEach(() => localStorage.clear());
+
+  it("shows the Records tab after Explore and follows the current dataset", async () => {
+    const { user } = recordsApp("/datasets/7/data");
+    await screen.findByRole("heading", { name: "Data" });
+    const tabs = within(nav())
+      .getAllByRole("link")
+      .map((a) => a.textContent);
+    expect(tabs).toEqual(["Datasets", "View data", "Explore", "Records"]);
+    const records = within(nav()).getByRole("link", { name: "Records" });
+    expect(records).toHaveAttribute("href", "/datasets/7/records");
+
+    await user.click(records);
+    expect(await screen.findByRole("heading", { name: "Records" })).toBeInTheDocument();
+    expect(within(nav()).getByRole("link", { name: "Records" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(within(nav()).getByRole("link", { name: "View data" })).not.toHaveAttribute(
+      "aria-current",
+    );
+    cleanupApp();
+
+    // With an open network, the network's dataset.
+    recordsApp("/runs/5");
+    await screen.findByText("This network is running.");
+    await vi.waitFor(() =>
+      expect(within(nav()).getByRole("link", { name: "Records" })).toHaveAttribute(
+        "href",
+        "/datasets/7/records",
+      ),
+    );
+    cleanupApp();
+
+    // With no current dataset: the newest one, with the list to pick another.
+    const next = recordsApp("/datasets");
+    await screen.findByRole("heading", { name: "Datasets" });
+    expect(within(nav()).getByRole("link", { name: "Records" })).toHaveAttribute(
+      "href",
+      "/records",
+    );
+    await next.user.click(within(nav()).getByRole("link", { name: "Records" }));
+    const list = await screen.findByRole("navigation", { name: "Datasets" });
+    expect(await within(list).findByRole("link", { name: /AI in medicine/ })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(within(list).getByRole("link", { name: /Older export/ })).toHaveAttribute(
+      "href",
+      "/datasets/3/records",
+    );
+  });
+
+  it("pages through records 50 at a time and shows N of M records", async () => {
+    const { user, calls } = recordsApp("/datasets/7/records", many(120), MANY_COLUMNS);
+    await table();
+    expect(screen.getByText("120 of 120 records")).toBeInTheDocument();
+    expect(bodyRows()).toHaveLength(50);
+    expect(screen.getByText("Page 1 of 3")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+    expect(screen.queryByRole("combobox", { name: /per page/i })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    expect(await screen.findByText("Page 2 of 3")).toBeInTheDocument();
+    await vi.waitFor(() => expect(firstCells()[0]).toBe("WOS:50"));
+    await user.click(screen.getByRole("button", { name: "Next" }));
+    await vi.waitFor(() => expect(bodyRows()).toHaveLength(20));
+    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+    expect(recordsCalls(calls).map((p) => p.get("page"))).toEqual(["1", "2", "3"]);
+
+    // N counts the matches.
+    await openFilters(user);
+    await user.selectOptions(screen.getByLabelText("Filter 1 column"), "Source Title");
+    await user.type(screen.getByLabelText("Filter 1 value"), "odd");
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    expect(await screen.findByText("60 of 120 records")).toBeInTheDocument();
+    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+  });
+
+  it("shows the default record columns that the export has", async () => {
+    recordsApp("/datasets/7/records");
+    await table();
+    expect(headers()).toEqual([
+      "UT (Unique WOS ID)",
+      "Article Title",
+      "Author Full Names",
+      "Publication Year",
+      "Document Type",
+      "Source Title",
+      "Author Keywords",
+      "Keywords Plus",
+      "Institutions (parsed)",
+    ]);
+    expect(headers()).not.toContain("Addresses");
+    cleanupApp();
+
+    // Without "Addresses" (so no parsed institutions) or "Keywords Plus": skipped.
+    const fewer = COLUMNS.filter(
+      (c) => !["Addresses", "Keywords Plus", "Institutions (parsed)"].includes(c.name),
+    );
+    recordsApp("/datasets/7/records", SYNTHETIC, fewer);
+    await table();
+    expect(headers()).toEqual([
+      "UT (Unique WOS ID)",
+      "Article Title",
+      "Author Full Names",
+      "Publication Year",
+      "Document Type",
+      "Source Title",
+      "Author Keywords",
+    ]);
+  });
+
+  it("cuts long record cells to one line", async () => {
+    const title = "A very long article title ".repeat(20).trim();
+    const rows = [{ "UT (Unique WOS ID)": "WOS:1", "Article Title": title }];
+    recordsApp("/datasets/7/records", rows, MANY_COLUMNS);
+    const t = await table();
+    const cell = within(t).getByTitle(title);
+    expect(cell).toHaveClass("cell-clip");
+    expect(cell).toHaveTextContent(title); // all of it, cut by CSS
+    expect(t).toHaveClass("records-table");
+    // The rules that make it one line with "…", and keep the table within the page.
+    const css = readFileSync(`${process.cwd()}/src/styles.css`, "utf8").replace(/\s+/g, " ");
+    expect(css).toMatch(/\.cell-clip \{[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;/);
+    expect(css).toMatch(/\.cell-clip \{[^}]*white-space: nowrap;/);
+    expect(css).toMatch(/\.records-table \{[^}]*table-layout: fixed;/);
+    expect(css).toMatch(/\.records-scroll \{[^}]*overflow-x: hidden;/);
+  });
+
+  it("opens a record with all its fields and returns to the same page", async () => {
+    const path = `/datasets/7/records?f=${encodeURIComponent('["Author Keywords","contains","deep"]')}`;
+    const { user } = recordsApp(path);
+    await table();
+    expect(screen.getByText("3 of 6 records")).toBeInTheDocument();
+    const row = bodyRows()[0]!;
+    await user.click(row);
+
+    const dialog = await screen.findByRole("dialog", { name: "Synthetic article WOS:1" });
+    const fields = [...dialog.querySelectorAll("dt")].map((dt) =>
+      dt.textContent?.replace(/\*.*$/, ""),
+    );
+    expect(fields).toEqual(COLUMNS.map((c) => c.name)); // every column, derived ones too
+    const field = (name: string) =>
+      [...dialog.querySelectorAll("dt")].find((dt) => dt.textContent?.startsWith(name))!
+        .nextElementSibling!;
+    expect(field("Keywords Plus")).toHaveTextContent("(empty)");
+    expect(field("Addresses")).toHaveTextContent("Univ Parma, Dept Med");
+    expect(field("Institutions (parsed)")).toHaveTextContent("Univ Parma; Mayo Clin");
+
+    // Modal: the page behind is inert and Tab stays in the dialog.
+    expect(screen.getByRole("table").closest("[inert]")).not.toBeNull();
+    const close = within(dialog).getByRole("button", { name: "Close" });
+    expect(close).toHaveFocus();
+    await user.tab();
+    expect(close).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(close).toHaveFocus();
+
+    await user.click(close);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("table").closest("[inert]")).toBeNull();
+    expect(screen.getByText("3 of 6 records")).toBeInTheDocument(); // same filters
+    expect(bodyRows()[0]).toHaveFocus(); // back where it was
+    await user.keyboard("{Enter}");
+    const again = await screen.findByRole("dialog");
+    await user.keyboard("{Escape}");
+    expect(again).not.toBeInTheDocument();
+  });
+
+  it("shows the records empty state while the profile is pending or failed", async () => {
+    const backend = (status: string, error: string | null) =>
+      mockApi({
+        "GET /auth/me": () => ({ body: SESSION }),
+        "GET /datasets": () => ({ body: [DATASET] }),
+        "GET /datasets/7": () => ({ body: DATASET }),
+        "GET /datasets/7/records": () => ({
+          body: {
+            status,
+            error,
+            columns: [],
+            total: 0,
+            matching: 0,
+            page: 1,
+            page_size: 50,
+            rows: [],
+            ignored_filter_columns: [],
+          },
+        }),
+      });
+    backend("pending", null);
+    renderApp("/datasets/7/records");
+    expect(await screen.findByText(/this takes a few seconds after upload/)).toBeInTheDocument();
+    expect(screen.getByText("Analysing")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).toBeNull();
+    cleanupApp();
+
+    backend("failed", "Could not read WoS_1.xls");
+    renderApp("/datasets/7/records");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The files could not be analysed: Could not read WoS_1.xls",
+    );
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("shows and hides record columns with the column picker", async () => {
+    const { user, calls } = recordsApp("/datasets/7/records");
+    await table();
+    await user.click(screen.getByRole("button", { name: /^Columns/ }));
+    const picker = screen.getByRole("group", { name: "Columns" });
+    const boxes = within(picker).getAllByRole("checkbox");
+    expect(boxes).toHaveLength(COLUMNS.length); // every column of the export + derived
+
+    await user.click(within(picker).getByRole("checkbox", { name: "Article Title" }));
+    expect(headers()).not.toContain("Article Title");
+    await user.click(within(picker).getByRole("checkbox", { name: "Addresses" }));
+    expect(headers()).toContain("Addresses");
+    await vi.waitFor(() =>
+      expect(recordsCalls(calls).at(-1)?.getAll("columns")).toContain("Addresses"),
+    );
+
+    // Hide all but one: the last visible column can't be hidden.
+    for (const name of headers().slice(1)) {
+      await user.click(
+        within(picker).getByRole("checkbox", {
+          name: new RegExp(`^${name.replace(/[()]/g, "\\$&")}`),
+        }),
+      );
+    }
+    expect(headers()).toEqual(["UT (Unique WOS ID)"]);
+    expect(within(picker).getByRole("checkbox", { name: "UT (Unique WOS ID)" })).toBeDisabled();
+  });
+
+  it("remembers the record columns per dataset", async () => {
+    const { user } = recordsApp("/datasets/7/records");
+    await table();
+    await user.click(screen.getByRole("button", { name: /^Columns/ }));
+    const picker = () => screen.getByRole("group", { name: "Columns" });
+    await user.click(within(picker()).getByRole("checkbox", { name: "Article Title" }));
+    await user.click(within(picker()).getByRole("checkbox", { name: "Addresses" }));
+    const chosen = headers();
+    cleanupApp();
+
+    // Coming back (a reload) shows the same columns.
+    recordsApp("/datasets/7/records");
+    await table();
+    expect(headers()).toEqual(chosen);
+    cleanupApp();
+
+    // Another dataset keeps its own (here, the default) choice.
+    recordsApp("/datasets/3/records");
+    await table();
+    expect(headers()).toContain("Article Title");
+    expect(headers()).not.toContain("Addresses");
+    cleanupApp();
+
+    const back = recordsApp("/datasets/7/records");
+    await table();
+    await back.user.click(screen.getByRole("button", { name: /^Columns/ }));
+    await back.user.click(screen.getByRole("button", { name: "Reset columns" }));
+    expect(headers()).toContain("Article Title");
+    expect(headers()).not.toContain("Addresses");
+  });
+
+  it("sorts records by a column header", async () => {
+    const rows: Values[] = [
+      { "UT (Unique WOS ID)": "WOS:1", "Article Title": "beta" },
+      { "UT (Unique WOS ID)": "WOS:2" },
+      { "UT (Unique WOS ID)": "WOS:3", "Article Title": "Alpha" },
+    ];
+    const { user, calls } = recordsApp("/datasets/7/records", rows, MANY_COLUMNS);
+    await table();
+    const header = () => screen.getByRole("columnheader", { name: /Article Title/ });
+    const sortButton = () => within(header()).getByRole("button");
+
+    await user.click(sortButton());
+    await vi.waitFor(() => expect(firstCells()).toEqual(["WOS:3", "WOS:1", "WOS:2"]));
+    expect(header()).toHaveAttribute("aria-sort", "ascending");
+    await user.click(sortButton());
+    await vi.waitFor(() => expect(firstCells()).toEqual(["WOS:1", "WOS:3", "WOS:2"]));
+    expect(header()).toHaveAttribute("aria-sort", "descending");
+    await user.click(sortButton());
+    await vi.waitFor(() => expect(firstCells()).toEqual(["WOS:1", "WOS:2", "WOS:3"]));
+    expect(header()).not.toHaveAttribute("aria-sort");
+
+    // The server sorts (all matching records, not just this page).
+    expect(recordsCalls(calls).map((p) => [p.get("sort"), p.get("order")])).toEqual([
+      [null, null],
+      ["Article Title", "asc"],
+      ["Article Title", "desc"],
+      [null, null],
+    ]);
+  });
+
+  it("filters records only on Apply and clears them", async () => {
+    const { user, calls } = recordsApp("/datasets/7/records");
+    await table();
+    await openFilters(user);
+    const column = screen.getByLabelText("Filter 1 column");
+    // Any column, visible or not.
+    expect(within(column).getAllByRole("option")).toHaveLength(COLUMNS.length);
+    expect(
+      within(screen.getByLabelText("Filter 1 operator"))
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["contains", "does not contain", "has item", "is empty", "is not empty"]);
+
+    await user.selectOptions(column, "Addresses");
+    await user.type(screen.getByLabelText("Filter 1 value"), "fudan");
+    expect(screen.getByText("6 of 6 records")).toBeInTheDocument(); // not yet
+    expect(recordsCalls(calls).every((p) => !p.has("filters"))).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    expect(await screen.findByText("2 of 6 records")).toBeInTheDocument();
+    expect(JSON.parse(recordsCalls(calls).at(-1)!.get("filters")!)).toEqual([
+      { column: "Addresses", op: "contains", value: "fudan" },
+    ]);
+
+    // "is empty" / "is not empty" take no value.
+    await user.click(screen.getByRole("button", { name: "+ Add filter" }));
+    await user.selectOptions(screen.getByLabelText("Filter 2 operator"), "not_empty");
+    expect(screen.getByLabelText("Filter 2 value")).toBeDisabled();
+    await user.selectOptions(screen.getByLabelText("Filter 2 column"), "ORCIDs");
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    expect(await screen.findByText("1 of 6 records")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Clear" }));
+    expect(await screen.findByText("6 of 6 records")).toBeInTheDocument();
+    expect(recordsCalls(calls).at(-1)!.has("filters")).toBe(false);
+  });
+
+  it("says when no records match the filters", async () => {
+    const { user } = recordsApp("/datasets/7/records");
+    await table();
+    await openFilters(user);
+    await user.type(screen.getByLabelText("Filter 1 value"), "no such record");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByText("No records match these filters.")).toBeInTheDocument();
+    expect(screen.getByText("0 of 6 records")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("highlights the matched text in record cells", async () => {
+    const f = (column: string, op: string, value: string) =>
+      `f=${encodeURIComponent(JSON.stringify([column, op, value]))}`;
+    const { user } = recordsApp(
+      `/datasets/7/records?${f("Article Title", "contains", "WOS:1")}&${f("Author Keywords", "has_item", "Deep learning; oncology")}`,
+    );
+    const t = await table();
+    const marks = [...t.querySelectorAll("mark")].map((m) => m.textContent);
+    expect(marks).toEqual(["WOS:1", "deep learning"]); // "oncology" is no whole item
+    const cell = within(t).getByTitle(/^fetal ultrasound; deep learning/);
+    expect(cell.querySelector("mark")).toHaveTextContent("deep learning");
+
+    await user.click(bodyRows()[0]!);
+    const dialog = await screen.findByRole("dialog");
+    expect([...dialog.querySelectorAll("mark")].map((m) => m.textContent)).toEqual([
+      "WOS:1",
+      "deep learning",
+    ]);
+  });
+
+  it("restores record filters, sort and page from the URL", async () => {
+    const filter = encodeURIComponent('["Source Title","contains","odd"]');
+    const unknown = encodeURIComponent('["Nope","contains","x"]');
+    const { calls } = recordsApp(
+      `/datasets/7/records?f=${filter}&f=${unknown}&sort=Article%20Title&order=desc&page=2`,
+      many(120),
+      MANY_COLUMNS,
+    );
+    await table();
+    expect(screen.getByText("60 of 120 records")).toBeInTheDocument();
+    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Article Title/ })).toHaveAttribute(
+      "aria-sort",
+      "descending",
+    );
+    const sent = recordsCalls(calls)[0]!;
+    expect(sent.get("page")).toBe("2");
+    expect(sent.get("sort")).toBe("Article Title");
+    expect(sent.get("order")).toBe("desc");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Ignored a filter on an unknown column: Nope.",
+    );
+    // The known filter is in the editor; the unknown one was dropped.
+    expect(screen.getByRole("button", { name: "Filters (1)" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(screen.getByLabelText("Filter 1 column")).toHaveValue("Source Title");
+    expect(screen.getByLabelText("Filter 1 value")).toHaveValue("odd");
+    expect(screen.queryByLabelText("Filter 2 column")).toBeNull();
+  });
+
+  it("marks derived record columns and shows only Institutions (parsed) by default", async () => {
+    const { user } = recordsApp("/datasets/7/records");
+    await table();
+    expect(
+      screen.getByRole("columnheader", {
+        name: /^Institutions \(parsed\)\s*\(derived, not in the export\)$/,
+      }),
+    ).toBeInTheDocument();
+    expect(headers()).not.toContain("Keywords (normalized)");
+    expect(screen.getByText(/derived, not in the export: computed/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^Columns/ }));
+    const picker = screen.getByRole("group", { name: "Columns" });
+    const box = (name: RegExp) => within(picker).getByRole("checkbox", { name });
+    expect(box(/^Institutions \(parsed\)\s*\(derived, not in the export\)$/)).toBeChecked();
+    expect(box(/^Keywords \(normalized\)\s*\(derived, not in the export\)$/)).not.toBeChecked();
+    expect(box(/^Addresses$/)).not.toBeChecked();
+  });
+
+  it("notes that records opened from a link may differ from the link", async () => {
+    const note = /keeps at most 20 shared items per link/;
+    const f = encodeURIComponent('["Institutions (parsed)","contains","Univ Parma; Mayo Clin"]');
+    recordsApp(`/datasets/7/records?f=${f}&from=link`);
+    await table();
+    expect(
+      screen.getByText(
+        "The network file keeps at most 20 shared items per link and skips keywords used in too many articles, so these records may differ from the link.",
+      ),
+    ).toBeInTheDocument();
+    cleanupApp();
+
+    recordsApp(`/datasets/7/records?f=${f}&from=node`);
+    await table();
+    expect(screen.queryByText(note)).toBeNull();
+    cleanupApp();
+
+    // Once the user applies filters of their own, the note no longer applies.
+    const fromLink = recordsApp(`/datasets/7/records?f=${f}&from=link`);
+    await table();
+    expect(screen.getByText(note)).toBeInTheDocument();
+    await fromLink.user.click(screen.getByRole("button", { name: "Apply" }));
+    await vi.waitFor(() => expect(screen.queryByText(note)).toBeNull());
+    cleanupApp();
+
+    recordsApp("/datasets/7/records");
+    await table();
+    expect(screen.queryByText(note)).toBeNull();
+  });
+
+  it("shows the filtered columns when opened from the explorer", async () => {
+    const f = (column: string, value: string) =>
+      `f=${encodeURIComponent(JSON.stringify([column, "contains", value]))}`;
+    // "Keywords (normalized)" and "Addresses" are hidden by default.
+    const path = `/datasets/7/records?${f("Institutions (parsed)", "Univ Parma; Mayo Clin")}&${f("Keywords (normalized)", "deep learning")}`;
+    recordsApp(`${path}&from=link`);
+    await table();
+    expect(headers()).toContain("Institutions (parsed)");
+    expect(headers()).toContain("Keywords (normalized)");
+    cleanupApp();
+
+    recordsApp(`/datasets/7/records?${f("Addresses", "Parma")}&from=node`);
+    await table();
+    expect(headers()).toContain("Addresses");
+    cleanupApp();
+
+    // Not when the same view is opened directly.
+    recordsApp(path);
+    await table();
+    expect(headers()).not.toContain("Keywords (normalized)");
   });
 });

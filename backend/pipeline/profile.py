@@ -18,8 +18,11 @@ from .custom import ENTITIES, LINKS, MODELS
 from .institutions import ARTICLE_ID, parse_reprint_address_block, pick_anchor_institution
 from .keywords import normalize_keyword, parse_keyword_columns
 
-PROFILE_VERSION = 4
-"""Bump when the profile gains or changes content: the worker re-profiles older ones."""
+PROFILE_VERSION = 5
+"""Bump when the profile gains or changes content: the worker re-profiles older ones.
+5: the worker also stores the dataset's records (pipeline.records)."""
+RECORDS_SINCE_VERSION = 5
+"""Profiles from this version on were stored together with the dataset's records."""
 SAMPLE_ROWS = 10
 MAX_CELL_CHARS = 200
 TOP_N = 10
@@ -42,6 +45,8 @@ def _json_value(value: Any) -> Any:
         return None
     if isinstance(value, (pd.Timestamp,)):
         return value.isoformat()
+    if isinstance(value, str):
+        value = value.replace("\x00", "")  # PostgreSQL JSONB can't hold NUL characters
     if isinstance(value, str) and len(value) > MAX_CELL_CHARS:
         return value[:MAX_CELL_CHARS] + "…"
     return value
@@ -199,8 +204,24 @@ def _link_catalog(df: pd.DataFrame) -> list[dict]:
     return entries
 
 
+def _without_nul(obj: Any) -> Any:
+    """The profile with NUL characters removed from every string (keys too): PostgreSQL
+    JSONB rejects them, and pipeline.records drops them the same way."""
+    if isinstance(obj, str):
+        return obj.replace("\x00", "")
+    if isinstance(obj, dict):
+        return {_without_nul(k): _without_nul(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_without_nul(v) for v in obj]
+    return obj
+
+
 def profile_dataset(df: pd.DataFrame) -> dict:
     """Schema + sample + statistics for an article-level WoS dataframe."""
+    return _without_nul(_profile(df))
+
+
+def _profile(df: pd.DataFrame) -> dict:
     stats: dict[str, Any] = {"articles": len(df), "columns": len(df.columns)}
 
     if ARTICLE_ID in df.columns:

@@ -1,6 +1,7 @@
 // Right panel: the selected item, then the visible items as JSON (exactly
 // visibleNodes()/visibleEdges()).
 import { useEffect, useRef } from "react";
+import { Link } from "react-router";
 
 import {
   prettyTeam,
@@ -10,6 +11,7 @@ import {
   type NetworkEdge,
   type NetworkNode,
 } from "../../lib/network";
+import { linkRecordsUrl, nodeRecordsUrl, type RecordsSource } from "../../lib/records";
 import type { Selection } from "./types";
 
 interface Props {
@@ -18,6 +20,7 @@ interface Props {
   visibleNodes: NetworkNode[];
   visibleEdges: NetworkEdge[];
   selected: Selection | null;
+  records?: RecordsSource;
 }
 
 function AttrList({ attr }: { attr?: Record<string, AttrValue> | null }) {
@@ -38,11 +41,27 @@ function AttrList({ attr }: { attr?: Record<string, AttrValue> | null }) {
   );
 }
 
+function ShowRecords({ to }: { to: string | null }) {
+  if (!to) return null;
+  return (
+    <p className="small" style={{ marginTop: 8 }}>
+      <Link to={to}>Show records</Link>
+    </p>
+  );
+}
+
+/** A link's shared items: "evidence" in custom networks, "shared_keywords" otherwise. */
+function sharedItems(e: NetworkEdge): string[] {
+  const v = e.attr?.evidence ?? e.attr?.shared_keywords;
+  return Array.isArray(v) ? v.map(String) : v ? [String(v)] : [];
+}
+
 function SelectedItem({
   network,
   nodeById,
   selected,
-}: Pick<Props, "network" | "nodeById" | "selected">) {
+  records,
+}: Pick<Props, "network" | "nodeById" | "selected" | "records">) {
   if (!selected) {
     return <p className="small muted">Click a node or link in the graph to see its details.</p>;
   }
@@ -55,12 +74,15 @@ function SelectedItem({
         <p className="small muted">
           {prettyTeam(n.team)} · {n.role}
         </p>
+        {records && <ShowRecords to={nodeRecordsUrl(records, n)} />}
         <AttrList attr={n.attr} />
       </div>
     );
   }
   const e = network.edges[selected.index];
   if (!e) return null;
+  const a = nodeById.get(e.source);
+  const b = nodeById.get(e.target);
   return (
     <div>
       <h2>
@@ -69,6 +91,7 @@ function SelectedItem({
       <p className="small muted">
         {prettyType(e.type)} · weight {e.weight}
       </p>
+      {records && a && b && <ShowRecords to={linkRecordsUrl(records, a, b, sharedItems(e))} />}
       <AttrList attr={e.attr} />
     </div>
   );
@@ -92,7 +115,12 @@ export function DetailsPanel(p: Props) {
     <>
       {/* The details stay put; only the JSON below scrolls. */}
       <section aria-label="Selection" className="details-selection">
-        <SelectedItem network={p.network} nodeById={p.nodeById} selected={p.selected} />
+        <SelectedItem
+          network={p.network}
+          nodeById={p.nodeById}
+          selected={p.selected}
+          records={p.records}
+        />
       </section>
       <section aria-labelledby="details-json-title" className="details-items">
         <h3 id="details-json-title" className="group-title">
