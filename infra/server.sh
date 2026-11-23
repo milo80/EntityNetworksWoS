@@ -276,7 +276,14 @@ set -euo pipefail
 cd "$1/deploy"
 src=/tmp/entitynetworks-restore
 docker compose stop api worker
-docker compose exec -T db pg_restore -U entitynet -d entitynet --clean --if-exists < "$src/db.dump"
+# Restore into an EMPTY database: the running one already has the current
+# code's schema, which can include tables the (older) backup doesn't know, and
+# `pg_restore --clean` can't drop tables those depend on. migrate (below) then
+# upgrades the restored schema to the current code.
+docker compose exec -T db dropdb -U entitynet --force entitynet
+docker compose exec -T db createdb -U entitynet -O entitynet entitynet
+docker compose exec -T db pg_restore -U entitynet -d entitynet --exit-on-error --single-transaction \
+    < "$src/db.dump"
 docker compose run --rm --no-deps -T api sh -c 'rm -rf /data/uploads/* && tar -C /data -xzf -' \
     < "$src/uploads.tar.gz"
 docker compose run --rm migrate   # in case the code is newer than the backup
