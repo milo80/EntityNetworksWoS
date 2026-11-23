@@ -34,7 +34,9 @@ $COMPOSE exec -T db pg_dump -U entitynet -d entitynet --format=custom \
   > "$DEST/db-$stamp.dump.partial"
 mv "$DEST/db-$stamp.dump.partial" "$DEST/db-$stamp.dump"
 
-$COMPOSE exec -T api tar -C /data -czf - uploads > "$DEST/uploads-$stamp.tar.gz.partial"
+# A one-off container on the uploads volume, so this works even when api is
+# stopped or failing (e.g. a broken migration).
+$COMPOSE run --rm --no-deps -T api tar -C /data -czf - uploads > "$DEST/uploads-$stamp.tar.gz.partial"
 mv "$DEST/uploads-$stamp.tar.gz.partial" "$DEST/uploads-$stamp.tar.gz"
 
 find "$DEST" -maxdepth 1 \( -name 'db-*.dump' -o -name 'uploads-*.tar.gz' \) \

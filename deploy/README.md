@@ -215,13 +215,17 @@ with the stack running, in `deploy/` (this replaces the current data):
 
 ```
 docker compose stop api worker
-docker compose exec -T db pg_restore -U entitynet -d entitynet --clean --if-exists < backups/db-<time>.dump
+docker compose exec -T db dropdb -U entitynet --force entitynet
+docker compose exec -T db createdb -U entitynet -O entitynet entitynet
+docker compose exec -T db pg_restore -U entitynet -d entitynet --exit-on-error --single-transaction < backups/db-<time>.dump
 docker compose run --rm --no-deps -T api sh -c 'rm -rf /data/uploads/* && tar -C /data -xzf -' < backups/uploads-<time>.tar.gz
 docker compose run --rm migrate
 docker compose start api worker
 ```
 
-`migrate` brings a backup made by older code up to the current schema.
+The restore goes into an empty database: `pg_restore --clean` fails when the
+running schema has tables the backup doesn't (code newer than the backup).
+`migrate` then brings the restored schema up to the current code.
 
 ## Limits and rules of this setup
 
