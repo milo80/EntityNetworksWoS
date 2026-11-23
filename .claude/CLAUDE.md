@@ -59,6 +59,13 @@ in the order and with the hand-offs in `docs/workflow.md` ("Agents: who does wha
   passes.
 - **The test:** a fresh clone plus `podman compose up --build` in `deploy/` works
   with nothing installed but podman.
+- **Docs follow the commands.** When a change you made alters a command, flag,
+  env variable, service or script that people run (local, Compose, CI, QA, PROD),
+  update every doc that mentions it before reporting the work as done: find them
+  with `git grep`, fix the reference doc and docs/workflow.md. While still trying
+  things out, skip it. Never edit legacy/ or generated files (`docs/openapi.json`,
+  `frontend/src/api/schema.d.ts`, `frontend/src/lib/unaccent.generated.ts`:
+  regenerate them instead).
 
 ## Host commands (for now)
 
