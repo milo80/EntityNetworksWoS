@@ -1195,10 +1195,23 @@ describe("records", () => {
     expect(close).toHaveFocus();
     await user.tab({ shift: true });
     expect(close).toHaveFocus();
+    // After a click on plain text, focus is on the dialog itself: Tab and Shift+Tab
+    // still wrap to its controls instead of leaving for the top bar, which is inert.
+    const nav = screen.getByRole("navigation", { name: "Main" });
+    expect(nav.closest("[inert]")).not.toBeNull();
+    await user.click(field("Addresses"));
+    expect(dialog).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(close).toHaveFocus();
+    await user.click(within(dialog).getByText("Addresses"));
+    expect(dialog).toHaveFocus();
+    await user.tab();
+    expect(close).toHaveFocus();
 
     await user.click(close);
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByRole("table").closest("[inert]")).toBeNull();
+    expect(nav.closest("[inert]")).toBeNull();
     expect(screen.getByText("3 of 6 records")).toBeInTheDocument(); // same filters
     expect(bodyRows()[0]).toHaveFocus(); // back where it was
     await user.keyboard("{Enter}");

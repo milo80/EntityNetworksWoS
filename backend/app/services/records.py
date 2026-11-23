@@ -3,19 +3,33 @@
 The rows are JSONB objects (column -> value, empty ones left out), so every
 filter reads ``data ->> column``. The rules match the explorer's attribute
 search: ";" separates alternatives in a filter (OR), filters combine with AND,
-terms are trimmed and compared case-insensitively, and empty terms are dropped.
+terms are trimmed and empty ones dropped. The text operators ignore case and
+accents: the cell and the term both go through ``fold`` (``lower(unaccent(...))``)
+in SQL, so they are folded by the same function.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any, cast
 
 from psycopg.errors import QueryCanceled
-from sqlalchemy import ColumnElement, Select, case, func, literal, not_, or_, select, text
+from sqlalchemy import (
+    ColumnElement,
+    Select,
+    Text,
+    any_,
+    case,
+    func,
+    literal,
+    not_,
+    select,
+    text,
+)
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from pipeline.keywords import normalize_keyword
 from pipeline.profile import RECORDS_SINCE_VERSION
 from pipeline.records import KEYWORD_COLUMNS, derived_columns
 
@@ -74,8 +88,15 @@ class RecordsQueryError(ValueError):
 
 
 def terms(value: str) -> list[str]:
-    """'a; B ;; a' -> ['a', 'b'] (as visibility.parseAttrRows in the UI, deduplicated)."""
-    return list(dict.fromkeys(t for part in value.split(";") if (t := part.strip().lower())))
+    """'a; B ;; A' -> ['a', 'B'] (as visibility.parseAttrRows in the UI, deduplicated).
+
+    Trimmed but not lower-cased: SQL folds them (``fold``), as it folds the cells.
+    """
+    unique: dict[str, str] = {}
+    for part in value.split(";"):
+        if t := part.strip():
+            unique.setdefault(t.casefold(), t)
+    return list(unique.values())
 
 
 def check_filter_size(filters: list[RecordFilter]) -> None:
@@ -93,40 +114,64 @@ def _text(column: str) -> ColumnElement[Any]:
     return DatasetRecord.data[column].astext
 
 
-def _contains(column: str, values: list[str]) -> ColumnElement[bool]:
-    """Case-insensitive substring; keyword columns also treat hyphens as spaces, as the
-    keyword networks do (also used, negated, by "does not contain")."""
-    cell = func.lower(func.coalesce(_text(column), ""))
-    if column in KEYWORD_COLUMNS:
-        cell = func.replace(cell, "-", " ")
-        values = list(dict.fromkeys(normalize_keyword(t) for t in values))
-    return or_(*(func.strpos(cell, t) > 0 for t in values))
+TEXT_OPERATORS = ("contains", "not_contains", "has_item")
 
 
-def _has_item(column: str, values: list[str]) -> ColumnElement[bool]:
-    """A ";"-separated item equals a term (keyword columns normalized as networks do)."""
+def fold(value: ColumnElement[Any], column: str) -> ColumnElement[Any]:
+    """Case and accents ignored ("Í", "İ", "ì" -> "i"); keyword columns also treat
+    hyphens as spaces, like pipeline.keywords.normalize_keyword. Unlike it, typographic
+    dashes (‐ ‑ ‒ – — ― − and the soft hyphen) count as hyphens too: unaccent turns them
+    into "-" first. Applied to cells and terms alike, so both sides are folded by the
+    same function."""
+    folded = func.lower(func.unaccent(value))
+    return func.replace(folded, "-", " ") if column in KEYWORD_COLUMNS else folded
+
+
+def _fold_terms(db: Session, filters: list[RecordFilter]) -> list[list[str]]:
+    """Each filter's terms, folded by PostgreSQL in one query (as the cells are).
+
+    Folded beforehand so that the filters compare constants: PostgreSQL would
+    otherwise unaccent every term again for every record. A term that folds to
+    nothing (a lone accent) is dropped, as empty terms are.
+    """
+    per_filter = [terms(f.value) if f.op in TEXT_OPERATORS else [] for f in filters]
+    exprs = [fold(literal(t, Text), f.column) for f, ts in zip(filters, per_filter) for t in ts]
+    folded: Iterator[str] = iter(db.execute(select(*exprs)).one() if exprs else ())
+    return [[t for t in dict.fromkeys(next(folded) for _ in ts) if t] for ts in per_filter]
+
+
+def _like_escape(term: str) -> str:
+    return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _contains(column: str, folded: list[str]) -> ColumnElement[bool]:
+    """Substring of the folded cell (also used, negated, by "does not contain").
+
+    LIKE ANY folds the cell once per record, whatever the number of terms."""
+    cell = fold(func.coalesce(_text(column), ""), column)
+    patterns = [f"%{_like_escape(t)}%" for t in folded]
+    return cell.like(any_(literal(patterns, ARRAY(Text))))
+
+
+def _has_item(column: str, folded: list[str]) -> ColumnElement[bool]:
+    """A trimmed ";"-separated item equals a term, both folded."""
     items = func.unnest(func.string_to_array(_text(column), ";")).column_valued("item")
-    item = func.lower(func.btrim(items, SPACES))
-    wanted = values
-    if column in KEYWORD_COLUMNS:
-        item = func.replace(item, "-", " ")
-        wanted = list(dict.fromkeys(normalize_keyword(t) for t in values))
-    return select(literal(1)).where(item.in_(wanted)).exists()
+    item = fold(func.btrim(items, SPACES), column)
+    return select(literal(1)).where(item == any_(literal(folded, ARRAY(Text)))).exists()
 
 
-def _condition(f: RecordFilter) -> ColumnElement[bool] | None:
+def _condition(f: RecordFilter, folded: list[str]) -> ColumnElement[bool] | None:
     if f.op == "is_empty":
         return _text(f.column).is_(None)
     if f.op == "not_empty":
         return _text(f.column).is_not(None)
-    values = terms(f.value)
-    if not values:
+    if not folded:
         return None  # nothing to match: the row is ignored, as in the explorer
     if f.op == "contains":
-        return _contains(f.column, values)
+        return _contains(f.column, folded)
     if f.op == "not_contains":
-        return not_(_contains(f.column, values))
-    return _has_item(f.column, values)
+        return not_(_contains(f.column, folded))
+    return _has_item(f.column, folded)
 
 
 def _sort_key(column: RecordColumnOut) -> ColumnElement[Any]:
@@ -168,11 +213,16 @@ def query_records(
         return empty
 
     check_filter_size(filters)
-    conditions = [c for f in filters if f.column in by_name and (c := _condition(f)) is not None]
+    known = [f for f in filters if f.column in by_name]
     own = DatasetRecord.dataset_id == dataset.id
     # Bounded: this transaction's statements are cancelled after the timeout.
     db.execute(text(f"SET LOCAL statement_timeout = {int(STATEMENT_TIMEOUT_MS)}"))
     try:
+        conditions = [
+            c
+            for f, folded in zip(known, _fold_terms(db, known))
+            if (c := _condition(f, folded)) is not None
+        ]
         return _page(db, empty, own, conditions, by_name, page, sort, descending, columns)
     except OperationalError as exc:
         if isinstance(exc.orig, QueryCanceled):
@@ -195,9 +245,11 @@ def _page(
     columns: list[str],
 ) -> RecordsPageOut:
     total = db.scalar(select(func.count()).where(own)) or 0
-    matching = db.scalar(select(func.count()).where(own, *conditions)) or 0 if conditions else total
-
-    query: Select = select(DatasetRecord.position, DatasetRecord.data).where(own, *conditions)
+    # One scan for the page and the matching count (the window counts every match).
+    matches = func.count().over() if conditions else literal(total)
+    query: Select = select(DatasetRecord.position, DatasetRecord.data, matches).where(
+        own, *conditions
+    )
     if sort in by_name:
         key = _sort_key(by_name[sort])
         query = query.order_by(key.desc().nulls_last() if descending else key.asc().nulls_last())
@@ -205,10 +257,17 @@ def _page(
     query = query.offset((page - 1) * RECORDS_PAGE_SIZE).limit(RECORDS_PAGE_SIZE)
 
     wanted = [c for c in columns if c in by_name] or list(by_name)
+    found = db.execute(query).all()
     rows = [
         RecordOut(index=position, values={c: data[c] for c in wanted if c in data})
-        for position, data in db.execute(query)
+        for position, data, _ in found
     ]
+    if found:
+        matching = int(found[0][2])
+    elif conditions and page > 1:  # past the last page: no row carries the count
+        matching = db.scalar(select(func.count()).where(own, *conditions)) or 0
+    else:
+        matching = 0 if conditions else total
     return empty.model_copy(update={"total": total, "matching": matching, "rows": rows})
 
 
