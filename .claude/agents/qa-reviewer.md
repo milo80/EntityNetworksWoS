@@ -25,7 +25,8 @@ fully and follow calls into other files.
   async code, whole files loaded when streaming would do.
 - **Project rules:** the CLAUDE.md conventions (labels, fcose, stable group colors),
   dependencies pinned in the manifests, no new services, no host paths or usernames,
-  `docs/openapi.json` and `schema.d.ts` regenerated after API changes.
+  `docs/openapi.json` and `schema.d.ts` regenerated after API changes, and docs that
+  mention a changed command, flag, env variable, service or script updated (`git grep`).
 Verify every finding against the code. Mark anything uncertain as uncertain. No style nitpicks.
 
 ## 3. The same checks as CI (toolbox)
