@@ -2,7 +2,7 @@
 // server filters, sorts and pages (50 per page); the view (filters, sort, page)
 // lives in the URL, the column choice per dataset in this browser.
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { flushSync } from "react-dom";
 import { Link, Navigate, useParams, useSearchParams } from "react-router";
 
@@ -544,13 +544,24 @@ function trapFocus(e: KeyboardEvent<HTMLElement>) {
   const first = focusable[0];
   const last = focusable[focusable.length - 1];
   if (!first || !last) return;
-  if (e.shiftKey && document.activeElement === first) {
+  // -1 when focus is on the dialog itself (after a click on its text) or elsewhere.
+  const at = focusable.indexOf(document.activeElement as HTMLElement);
+  if (e.shiftKey && at <= 0) {
     e.preventDefault();
     last.focus();
-  } else if (!e.shiftKey && document.activeElement === last) {
+  } else if (!e.shiftKey && (at === -1 || at === focusable.length - 1)) {
     e.preventDefault();
     first.focus();
   }
+}
+
+/** While the dialog is open, the app's top bar (outside this page) can't be reached. */
+function useInertTopbar() {
+  useEffect(() => {
+    const bar = document.querySelector(".topbar");
+    bar?.setAttribute("inert", "");
+    return () => bar?.removeAttribute("inert");
+  }, []);
 }
 
 function RecordDetail({
@@ -571,6 +582,7 @@ function RecordDetail({
     queryFn: () => api.getRecord(datasetId, index),
   });
   const titleId = useId();
+  useInertTopbar();
   const values = record.data?.values ?? {};
   const title = cellText(values["Article Title"]) || `Record ${index + 1}`;
   return (

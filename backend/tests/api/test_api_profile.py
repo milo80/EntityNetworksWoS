@@ -1,9 +1,12 @@
+import ast
 import json
+import re
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 
 from app.models import Dataset, DatasetRecord
 from app.worker import profile_next_dataset, run_once
@@ -292,6 +295,8 @@ def test_record_filters_apply_to_all_records(client, db, settings, monkeypatch):
     assert _uts(_records(client, ds, [("Source Title", "contains", "odd")], page=2))[-1] == (
         "WOS:119"
     )
+    past = _records(client, ds, [("Source Title", "contains", "odd")], page=3)
+    assert past["rows"] == [] and past["matching"] == 60  # counted past the last page too
     assert _records(client, ds, [("Article Title", "is_empty", "")])["matching"] == 12
     assert _records(client, ds, [("Article Title", "not_empty", "x")])["matching"] == 108
     none = _records(client, ds, [("Source Title", "contains", "no such journal")])
@@ -437,7 +442,7 @@ def test_contains_on_keyword_columns_treats_hyphens_as_spaces(client, db, settin
         {
             "UT (Unique WOS ID)": ["WOS:0", "WOS:1", "WOS:2"],
             "Keywords Plus": ["MACHINE-LEARNING; NEURAL NETS", "deep learning", None],
-            "Author Keywords": [None, "Self-supervised learning", "ethics"],
+            "Author Keywords": ["self\u2013supervised", "Self-supervised learning", "ethics"],
             "Article Title": ["A machine-learning study", "Other", "Ethics of AI"],
         }
     )
@@ -447,9 +452,83 @@ def test_contains_on_keyword_columns_treats_hyphens_as_spaces(client, db, settin
     # As the keyword networks compare them: case and hyphens don't matter.
     assert flt("Keywords Plus", "contains", "machine learning") == ["WOS:0"]
     assert flt("Keywords Plus", "contains", "Machine-Learning; deep") == ["WOS:0", "WOS:1"]
-    assert flt("Author Keywords", "contains", "self supervised") == ["WOS:1"]
+    # WOS:0 is "self–supervised" (en dash): a typographic dash counts as a hyphen.
+    assert flt("Author Keywords", "contains", "self supervised") == ["WOS:0", "WOS:1"]
     assert flt("Keywords (normalized)", "contains", "machine-learning") == ["WOS:0"]
     assert flt("Keywords Plus", "not_contains", "machine learning") == ["WOS:1", "WOS:2"]
     # Other columns are unchanged: a hyphen is a hyphen.
     assert flt("Article Title", "contains", "machine learning") == []
     assert flt("Article Title", "contains", "machine-learning") == ["WOS:0"]
+
+
+def test_ui_unaccent_table_matches_the_database(db):
+    """The Records highlight (frontend/src/lib/unaccent.generated.ts) folds as this
+    database's unaccent does; regenerate the table when the PostgreSQL image changes."""
+    generated = Path(__file__).parents[3] / "frontend/src/lib/unaccent.generated.ts"
+    entry = re.compile(r"""^\s+(?:"(.+?)"|([^\s"']+)): ((?:"|').*(?:"|')),$""")
+    table = {
+        (m[1] or m[2]): ast.literal_eval(m[3])
+        for line in generated.read_text(encoding="utf-8").splitlines()
+        if (m := entry.match(line))
+    }
+    header = re.search(r"(\d+) rules\.", generated.read_text(encoding="utf-8"))
+    assert header and len(table) == int(header[1]) > 1000
+    sources = list(table)
+    folded = db.execute(
+        text(
+            "SELECT unaccent(s) FROM unnest(CAST(:s AS text[])) WITH ORDINALITY AS t(s, n) ORDER BY n"
+        ),
+        {"s": sources},
+    ).scalars()
+    assert dict(zip(sources, folded)) == table
+
+
+def test_record_filters_ignore_accents_and_case(client, db, settings, monkeypatch):
+    uts = [f"WOS:{i}" for i in range(8)]
+    df = pd.DataFrame(
+        {
+            "UT (Unique WOS ID)": uts,
+            # The only "i" of WOS:0, 2, 3, 4 and 6 is accented; WOS:7 has a plain one.
+            "Addresses": [
+                "Ísland",
+                "Lyngby, Dänemark",
+                "İstanbul",
+                "Ìsola",
+                "Málaga, ÍSLA",
+                "Oslo 50%",
+                "Mérída",
+                "Pisa",
+            ],
+            "Author Full Names": ["Núñez, José", "Nunez, Jose", "Øster, Åsa"] + [None] * 5,
+            "Author Keywords": ["Ál-Gebra", "SÉLF-SUPERVISED learning", None, "İ-Tech"]
+            + [None] * 4,
+        }
+    )
+    ds = _profiled(client, db, settings, monkeypatch, df)
+    flt = lambda col, op, value: _uts(_records(client, ds, [(col, op, value)]))
+
+    # "i" and "I" match every accented i; accented terms match a plain "i".
+    every_i = ["WOS:0", "WOS:2", "WOS:3", "WOS:4", "WOS:6", "WOS:7"]
+    for term in ["i", "I", "Í", "İ", "í", "ì"]:
+        assert flt("Addresses", "contains", term) == every_i, term
+    assert flt("Addresses", "contains", "istanbul") == ["WOS:2"]
+    assert flt("Addresses", "contains", "İSTANBUL") == ["WOS:2"]
+    assert flt("Addresses", "contains", "island; danemark") == ["WOS:0", "WOS:1"]
+    # Typed text, not LIKE patterns.
+    assert flt("Addresses", "contains", "0%") == ["WOS:5"]
+    assert flt("Addresses", "contains", "_; \\; a%") == []
+    assert flt("Addresses", "contains", "\u0301") == uts  # folds to nothing: ignored
+    # "does not contain i" also drops the cells whose only "i" is accented.
+    assert flt("Addresses", "not_contains", "i") == ["WOS:1", "WOS:5"]
+    assert flt("Addresses", "not_contains", "Í") == ["WOS:1", "WOS:5"]
+    # On every column, and for "has item" too.
+    assert flt("Author Full Names", "contains", "nunez") == ["WOS:0", "WOS:1"]
+    assert flt("Author Full Names", "has_item", "NÚÑEZ, JOSÉ") == ["WOS:0", "WOS:1"]
+    assert flt("Author Full Names", "has_item", "oster, asa") == ["WOS:2"]
+    # Keyword columns: hyphens still count as spaces, accents and case are ignored.
+    assert flt("Author Keywords", "contains", "al gebra") == ["WOS:0"]
+    assert flt("Author Keywords", "contains", "self supervised") == ["WOS:1"]
+    assert flt("Author Keywords", "has_item", "Al-Gebra") == ["WOS:0"]
+    assert flt("Author Keywords", "has_item", "i tech") == ["WOS:3"]
+    assert flt("Keywords (normalized)", "has_item", "İ-TECH; al gebra") == ["WOS:0", "WOS:3"]
+    assert flt("Keywords (normalized)", "contains", "ál") == ["WOS:0"]

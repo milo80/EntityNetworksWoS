@@ -3,7 +3,7 @@
 // server filters (backend/app/services/records.py); these rules mirror it so the
 // highlights show what matched.
 import type { RecordFilter, RecordOperator } from "../api/client";
-import { parseAttrRows } from "./visibility";
+import { UNACCENT } from "./unaccent.generated";
 
 export const PAGE_SIZE = 50;
 export const INSTITUTIONS_PARSED = "Institutions (parsed)";
@@ -141,12 +141,31 @@ export function nextSort(
 
 // ------------------------------------------------------------ highlights
 
-/** "a; B ;; c" -> ["a", "b", "c"]: the explorer's attribute-search terms. */
+/**
+ * "a; B ;; c" -> ["a", "B", "c"]: the explorer's attribute-search terms, not
+ * lower-cased yet: they are folded as the server folds them (unaccent, then lower).
+ */
 export const filterTerms = (value: string): string[] =>
-  parseAttrRows([{ key: "", value }])[0]?.values ?? [];
+  value
+    .split(";")
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
 
-/** As pipeline.keywords.normalize_keyword. */
-const normalizeKeyword = (s: string) => s.trim().toLowerCase().replace(/-/g, " ");
+/**
+ * Case and accents folded away ("İ", "Í", "ì" -> "i") exactly as the server's fold,
+ * lower(unaccent(...)) in backend/app/services/records.py: each character through
+ * PostgreSQL's unaccent table (generated from it), then lower-cased. A character
+ * unaccent leaves alone is left alone here too.
+ */
+function fold(s: string): string {
+  // Per character, as PostgreSQL's lower(): a final "Σ" gives "σ", not "ς".
+  let out = "";
+  for (const c of s) out += (UNACCENT[c] ?? c).toLowerCase();
+  return out;
+}
+
+/** As the server's fold on keyword columns: hyphens (typographic dashes too) as spaces. */
+const normalizeKeyword = (s: string) => fold(s.trim()).replace(/-/g, " ");
 
 export interface Segment {
   text: string;
@@ -170,40 +189,47 @@ function markRanges(text: string, ranges: [number, number][]): Segment[] {
 }
 
 /**
- * The lower-cased text, and for each of its characters the index of the original
- * one: lower-casing can change the length ("İ" -> "i̇"), so indices found in the
- * lower-cased text are mapped back before cutting the original.
+ * The folded text, and for each of its characters the start and end of the original
+ * character it came from: folding can change the length ("İ" -> "i", "ß" -> "ss"),
+ * so indices found in the folded text are mapped back before cutting the original.
+ * A character and the combining marks after it fold together, so a highlight never
+ * separates a letter from its accent.
  */
-function lowerWithOrigin(text: string): { lower: string; origin: number[] } {
-  let lower = "";
-  const origin: number[] = [];
-  for (let i = 0; i < text.length; i++) {
-    const l = text[i]!.toLowerCase();
-    lower += l;
-    for (let k = 0; k < l.length; k++) origin.push(i);
+function foldWithOrigin(text: string): { folded: string; start: number[]; end: number[] } {
+  let folded = "";
+  const start: number[] = [];
+  const end: number[] = [];
+  for (const m of text.matchAll(/\P{M}\p{M}*|\p{M}+/gu)) {
+    const f = fold(m[0]);
+    folded += f;
+    for (let k = 0; k < f.length; k++) {
+      start.push(m.index);
+      end.push(m.index + m[0].length);
+    }
   }
-  return { lower, origin };
+  return { folded, start, end };
 }
 
 /** The parts of a cell that a "contains" or "has item" filter on its column matched. */
 export function highlight(text: string, column: string, filters: readonly RecordFilter[]) {
   const ranges: [number, number][] = [];
   const keyword = KEYWORD_COLUMNS.has(column);
-  const lowered = lowerWithOrigin(text);
+  const { folded, start, end } = foldWithOrigin(text);
   // Keyword columns: hyphens count as spaces, as on the server (same length, same indices).
-  const lower = keyword ? lowered.lower.replace(/-/g, " ") : lowered.lower;
-  const { origin } = lowered;
+  const cell = keyword ? folded.replace(/-/g, " ") : folded;
+  // Case and accents are ignored on both sides, as on the server.
+  const norm = (s: string) => (keyword ? normalizeKeyword(s) : fold(s.trim()));
   for (const f of filters) {
     if (f.column !== column) continue;
     const terms = filterTerms(f.value);
     if (f.op === "contains") {
-      for (const t of keyword ? terms.map(normalizeKeyword) : terms) {
-        for (let i = lower.indexOf(t); i >= 0; i = lower.indexOf(t, i + t.length)) {
-          ranges.push([origin[i]!, origin[i + t.length - 1]! + 1]);
+      for (const t of new Set(terms.map(norm))) {
+        if (!t) continue;
+        for (let i = cell.indexOf(t); i >= 0; i = cell.indexOf(t, i + t.length)) {
+          ranges.push([start[i]!, end[i + t.length - 1]!]);
         }
       }
     } else if (f.op === "has_item") {
-      const norm = (s: string) => (keyword ? normalizeKeyword(s) : s.trim().toLowerCase());
       const wanted = new Set(terms.map(norm));
       let at = 0;
       for (const part of text.split(";")) {
