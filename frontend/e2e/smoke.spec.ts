@@ -1,7 +1,7 @@
 // The main user journey in a real browser: log in, upload WoS files, build a
 // network, explore it, delete the dataset. Also fails on any console error or
 // uncaught exception - which is how a Content-Security-Policy violation shows up.
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Cookie, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -21,13 +21,21 @@ function collectErrors(page: Page): string[] {
   return errors;
 }
 
+// One API session per worker for the tests that don't exercise the login form:
+// the API allows 10 logins a minute per client and the whole e2e run shares one IP.
+// Register only once: registration is rate-limited (5/min).
+let sessionCookies: Cookie[] = [];
+
 test.beforeAll(async ({ request }) => {
-  if (process.env.E2E_EMAIL) return;
-  // Register only once: registration is rate-limited (5/min), login isn't as tight.
   const creds = { data: { email: EMAIL, password: PASSWORD } };
-  if ((await request.post("/api/auth/login", creds)).ok()) return;
-  const r = await request.post("/api/auth/register", creds);
-  expect([201, 409], await r.text()).toContain(r.status());
+  let r = await request.post("/api/auth/login", creds);
+  if (!r.ok() && !process.env.E2E_EMAIL) {
+    r = await request.post("/api/auth/register", creds);
+    // Another worker registered it first.
+    if (r.status() === 409) r = await request.post("/api/auth/login", creds);
+  }
+  expect(r.ok(), await r.text()).toBe(true);
+  sessionCookies = (await request.storageState()).cookies;
 });
 
 test("upload, build and explore a network", async ({ page }, testInfo) => {
@@ -82,13 +90,11 @@ test("upload, build and explore a network", async ({ page }, testInfo) => {
 // covers the forms); the check itself goes through the UI.
 test("check a link's records from the explorer", async ({ page }, testInfo) => {
   const errors = collectErrors(page);
+  await page.context().addCookies(sessionCookies);
   await page.goto("/");
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Log in" }).click();
   await expect(page.getByRole("heading", { name: "Datasets" })).toBeVisible();
 
-  const csrf = (await page.context().cookies()).find((c) => c.name === "entitynet_csrf")!.value;
+  const csrf = sessionCookies.find((c) => c.name === "entitynet_csrf")!.value;
   const headers = { "X-CSRF-Token": csrf };
   const upload = await page.request.post("/api/datasets", {
     headers,
