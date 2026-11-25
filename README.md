@@ -36,6 +36,13 @@ WoS, upload the files, and explore the network in your browser. No programming n
    attribute (for example country or research area), keep only the strongest links,
    and click any node or link to see why it is there. Download the network as JSON to
    use it in other tools.
+5. **Ask the assistant** (when the server has it on): ask in your own language what
+   entities, links, models and filters mean, describe the network you want and get
+   settings filled into the Build network form (you check them and click Build), or
+   say what to show in the explorer ("only the 5 largest groups and the strongest
+   links"). Only metadata about your data (counts, availability, attribute names)
+   reaches the model, Anthropic's Claude: names and values stay on the platform
+   unless you type them. Nothing is built for you and conversations are not stored.
 
 ## Coming next
 
@@ -131,6 +138,11 @@ create or upgrade the tables and start the API (on :8000, API docs at
 Run exactly one worker: see "Limits" in
 [`deploy/README.md`](deploy/README.md#limits-and-rules-of-this-setup).
 
+The chat assistant is off unless `ANTHROPIC_API_KEY` is set, in `backend/.env` or in
+the shell that starts the API (a key in the shell wins over `.env`). See
+"Assistant" in [`deploy/README.md`](deploy/README.md#assistant-claude-api). Tests never
+call Anthropic: they use a scripted stand-in and ignore any key.
+
 The UI runs separately with Vite: see [`frontend/README.md`](frontend/README.md).
 
 ### Accounts
@@ -217,6 +229,8 @@ orphaned run(s)" and finishes the run. To find the worker's PID, don't use
 | POST/GET | `/api/runs` | queue `{dataset_id, relation, params?}` / list. `relation`: `author`, `institution_keywords` or `custom` (params `entity`, `link`, `model`, see `docs/openapi.json`) |
 | GET/DELETE | `/api/runs/{id}` | status: queued, running, succeeded, failed |
 | GET | `/api/runs/{id}/network`, `/api/runs/{id}/export` | network JSON (ETag) / as download |
+| GET | `/api/assistant/status` | `{enabled}`: whether the assistant is on (an API key is set) |
+| POST | `/api/assistant/chat` | `{messages, context}` -> `{reply, proposal?, actions}`; 503 when off, 429 after 30 messages/hour, 502 when the Claude API fails |
 | GET | `/api/health` | |
 
 Every POST/DELETE made with a session must send the `X-CSRF-Token` header

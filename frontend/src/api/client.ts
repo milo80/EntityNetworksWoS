@@ -17,6 +17,11 @@ export type NetworkOptions = S["NetworkOptionsOut"];
 export type RecordsPage = S["RecordsPageOut"];
 export type RecordItem = S["RecordOut"];
 export type RecordColumn = S["RecordColumnOut"];
+export type ChatMessage = S["ChatMessage"];
+export type ChatContext = S["ChatContext"];
+export type ChatReply = S["ChatOut"];
+export type NetworkProposal = S["NetworkProposal"];
+export type ExplorerAction = NonNullable<ChatReply["actions"]>[number];
 /** One filter row, sent JSON-encoded in `filters` (backend schemas.api.RecordFilter). */
 export type RecordOperator = "contains" | "not_contains" | "has_item" | "is_empty" | "not_empty";
 export interface RecordFilter {
@@ -136,4 +141,8 @@ export const api = {
   deleteRun: (id: number) => request<void>(`/runs/${id}`, { method: "DELETE" }),
   getNetwork: (runId: number) => request<Network>(`/runs/${runId}/network`),
   exportUrl: (runId: number) => `/api/runs/${runId}/export`,
+
+  assistantStatus: () => request<S["AssistantStatusOut"]>("/assistant/status"),
+  chat: (messages: ChatMessage[], context: ChatContext) =>
+    request<ChatReply>("/assistant/chat", { method: "POST", body: json({ messages, context }) }),
 };

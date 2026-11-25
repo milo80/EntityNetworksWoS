@@ -55,3 +55,17 @@ def rate_limit(scope: str, limit_of: Callable[[], int]):
             )
 
     return dependency
+
+
+hourly_limiter = RateLimiter(window_seconds=3600.0)
+"""Per-user hourly limits (the assistant's messages)."""
+
+
+def check_user_hourly_limit(scope: str, user_id: int, limit: int, detail: str) -> None:
+    """429 with ``detail`` when this user exceeds ``limit`` requests in the current hour."""
+    if not hourly_limiter.hit(scope, str(user_id), limit):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail,
+            headers={"Retry-After": str(int(hourly_limiter.window))},
+        )

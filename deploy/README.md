@@ -178,6 +178,30 @@ that the email arrives (also look in spam) and its link opens this site. If
 email isn't working, an admin can set the password directly with `set-password`
 ([Accounts on a server](#accounts-on-a-server)).
 
+## Assistant (Claude API)
+
+The chat assistant runs inside the `api` service (no extra service) and calls the
+Claude API with `ANTHROPIC_API_KEY` from `.env`. Without a key it is off: the
+"Assistant" button is hidden and `POST /api/assistant/chat` answers 503; nothing
+else changes. `ASSISTANT_MODEL` picks the model (default `claude-haiku-5-5`) and
+`ASSISTANT_MESSAGES_PER_HOUR` how many messages each user may send per hour
+(default 30).
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Then `docker compose up -d` (Compose recreates `api` with the new value). The key
+stays in the API: it is never sent to the browser or written to the log. Compose
+also takes `ANTHROPIC_API_KEY` from the shell it runs in, ahead of `.env`. Limits:
+30 messages per user per hour (`ASSISTANT_MESSAGES_PER_HOUR`), 2000 characters per
+message, the last 20 messages sent to the model, 5 tool rounds and 30 seconds per
+answer. Conversations are not stored. Only metadata about users' data (counts, availability, group sizes,
+attribute names) and what they type reach the Claude API.
+
+On a server made with `infra/`, add the line to `/opt/entitynetworks/deploy/.env`
+(deploys keep `.env`) and run `docker compose up -d` there.
+
 ## Backups
 
 `./backup.sh` writes `backups/db-<time>.dump` (pg_dump, custom format) and

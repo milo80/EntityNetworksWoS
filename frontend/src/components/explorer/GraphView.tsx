@@ -44,6 +44,8 @@ interface Props {
   search: string;
   selected: Selection | null;
   onSelect: (s: Selection | null) => void;
+  /** Fit the view to the visible graph each time this number changes (0: never asked). */
+  fitRequest?: number;
 }
 
 interface Tip {
@@ -63,6 +65,7 @@ const LABEL_MIN_ZOOM = 1;
 
 export function GraphView(props: Props) {
   const { network, styles, visibleNodeIds, visibleEdgeIdx, search, selected, onSelect } = props;
+  const fitRequest = props.fitRequest ?? 0;
   const container = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const onSelectRef = useRef(onSelect);
@@ -260,6 +263,15 @@ export function GraphView(props: Props) {
     if (el.empty()) return;
     el.select();
   }, [selected, network]);
+
+  // Fit on request (the assistant's "Fit"). The zoom change goes through the
+  // throttled zoom handler above, so labels keep their on-screen size.
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || fitRequest === 0) return;
+    const visible = cy.elements().not(".hidden");
+    if (visible.nonempty()) cy.fit(visible, 30);
+  }, [fitRequest]);
 
   return (
     <div className="graph-wrap">

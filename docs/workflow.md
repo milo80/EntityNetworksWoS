@@ -90,6 +90,9 @@ Toolbox, in `backend/` (migrations, then the API on :8000, API docs at
 COOKIE_SECURE=false .venv/bin/uvicorn app.main:app --reload
 ```
 
+The chat assistant is off unless `ANTHROPIC_API_KEY` is set: put it in `backend/.env`
+(a copy of `../.env.example`), or export it in that terminal, then restart the API.
+
 Toolbox, in `backend/`, second terminal (exactly one worker):
 
 ```bash
@@ -156,6 +159,9 @@ HTTP_PORT=8080
 HTTPS_PORT=8443
 PUBLIC_BASE_URL=https://localhost:8443
 ```
+
+Optional: `ANTHROPIC_API_KEY=<key>` in the same file turns on the chat assistant
+(see "Assistant" in [`deploy/README.md`](../deploy/README.md#assistant-claude-api)).
 
 Host, in `deploy/` (then open https://localhost:8443):
 

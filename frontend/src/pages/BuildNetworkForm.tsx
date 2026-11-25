@@ -1,7 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 
-import { api, type NetworkOptions, type Relation, type RunCreate } from "../api/client";
+import {
+  api,
+  type NetworkOptions,
+  type NetworkProposal,
+  type Relation,
+  type RunCreate,
+} from "../api/client";
+import { useAssistantBuildForm } from "../components/assistant/AssistantContext";
 import {
   BarList,
   GROUPS,
@@ -42,7 +49,8 @@ type FieldName =
   | "minItems"
   | "maxItemPct"
   | "similarityPct"
-  | "maxWordPct";
+  | "maxWordPct"
+  | "minWeight";
 
 const FIELDS: Record<FieldName, { label: string; min: number; max: number; help: string }> = {
   topN: {
@@ -105,6 +113,14 @@ const FIELDS: Record<FieldName, { label: string; min: number; max: number; help:
     max: 100,
     help: "How alike two texts must be to match. Higher values give fewer, closer matches.",
   },
+  minWeight: {
+    label: "Minimum link weight",
+    min: 1,
+    max: 1000,
+    help:
+      "Links between two nodes with fewer matching article pairs than this are dropped; " +
+      "their nodes stay. 1 keeps every link.",
+  },
   maxWordPct: {
     label: "Ignore words used by more than (%)",
     min: 1,
@@ -132,17 +148,20 @@ function fieldsFor(
   relation: Relation | null,
   kind: LinkKind | undefined,
   model: string,
+  minWeight: boolean,
 ): FieldName[] {
   if (relation === null) return [];
   if (relation === "author") return ["topN", "maxAuthors"];
   if (relation === "institution_keywords") {
     return ["topN", "maxAuthors", "minShared", "maxKeywordPct"];
   }
-  if (kind === "same_article") return ["topN", "maxAuthors"];
+  // The minimum link weight stays at 1 (every link) unless a proposal sets it.
+  const weight: FieldName[] = minWeight ? ["minWeight"] : [];
+  if (kind === "same_article") return ["topN", "maxAuthors", ...weight];
   if (model === "word_matching") {
-    return ["topN", "maxAuthors", "minItems", "maxItemPct"];
+    return ["topN", "maxAuthors", "minItems", "maxItemPct", ...weight];
   }
-  return ["topN", "maxAuthors", "similarityPct", "maxWordPct"];
+  return ["topN", "maxAuthors", "similarityPct", "maxWordPct", ...weight];
 }
 
 /** The problem with a field's text, or null when it is a whole number within its limits. */
@@ -167,7 +186,12 @@ const DEFAULT_VALUES: Record<FieldName, string> = {
   maxItemPct: "5",
   similarityPct: "50",
   maxWordPct: "5",
+  minWeight: "1",
 };
+
+const SUGGESTED_NOTE = "Suggested by the assistant. Check the settings and click Build.";
+/** Form controls a proposal can change (fields, and the choices). */
+type Suggestable = FieldName | "relation" | "entity" | "link" | "model";
 const DEFAULT_CUSTOM = { entity: "institution", link: "keywords", model: "word_matching" };
 type CustomChoice = BuildFormState["custom"];
 
@@ -191,12 +215,15 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
   }, [datasetId, relation, values, custom, expanded, moreOpen]);
   // A field's problem is shown once the user has left it.
   const [touched, setTouched] = useState<Set<FieldName>>(new Set());
+  // The controls the assistant's last proposal changed (highlighted until Build or Reset).
+  const [suggested, setSuggested] = useState<ReadonlySet<Suggestable> | null>(null);
 
   const create = useMutation({
     mutationFn: (body: RunCreate) => api.createRun(body),
     onSuccess: () => {
       // Fold the panel so the new network shows in the list; the settings stay.
       setExpanded(false);
+      setSuggested(null);
       return qc.invalidateQueries({ queryKey: runsKey(datasetId) });
     },
   });
@@ -222,7 +249,9 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
     options: (opts?.entities ?? []).filter((o) => test(o, granularity(o.key))),
   })).filter((g) => g.options.length > 0);
 
-  const active = fieldsFor(relation, link?.kind, custom.model);
+  const showMinWeight =
+    relation === "custom" && (values.minWeight !== "1" || !!suggested?.has("minWeight"));
+  const active = fieldsFor(relation, link?.kind, custom.model, showMinWeight);
   const problems: [string, string][] = active
     .map((name) => [name, fieldProblem(name, values[name])] as const)
     .filter((p): p is readonly [FieldName, string] => p[1] !== null)
@@ -282,6 +311,36 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
     }
   };
 
+  // A proposal from the assistant: the custom network, filled in and marked.
+  // Nothing is built: the user checks the settings and clicks Build.
+  useAssistantBuildForm(datasetId, (p: NetworkProposal) => {
+    const next: Record<FieldName, string> = {
+      ...values,
+      topN: String(p.top_n),
+      minWeight: String(p.min_weight),
+    };
+    if (p.min_shared != null) next.minItems = String(p.min_shared);
+    if (p.max_item_df != null) next.maxItemPct = percent(p.max_item_df);
+    if (p.threshold != null) next.similarityPct = percent(p.threshold);
+    if (p.max_word_df != null) next.maxWordPct = percent(p.max_word_df);
+    const changed = new Set<Suggestable>(
+      (Object.keys(next) as FieldName[]).filter((f) => next[f] !== values[f]),
+    );
+    if (relation !== "custom") changed.add("relation");
+    if (custom.entity !== p.entity) changed.add("entity");
+    if (custom.link !== p.link) changed.add("link");
+    if (custom.model !== p.model) changed.add("model");
+    setRelation("custom");
+    setExpanded(true);
+    setCustom((c) => ({ ...c, entity: p.entity, link: p.link, model: p.model }));
+    setValues(next);
+    setTouched(new Set());
+    setSuggested(changed);
+    create.reset();
+  });
+  const mark = (name: Suggestable, base: string) =>
+    suggested?.has(name) ? `${base} suggested` : base;
+
   const describedBy = (id: string, name?: FieldName) =>
     [`${id}-help`, name && invalid(name) ? "build-network-problems" : null]
       .filter(Boolean)
@@ -289,7 +348,7 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
 
   const inputProps = (name: FieldName, id: string) => ({
     id,
-    className: "input input-num",
+    className: mark(name, "input input-num"),
     type: "number",
     min: FIELDS[name].min,
     max: FIELDS[name].max,
@@ -315,6 +374,7 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
     setExpanded(false);
     setMoreOpen(false);
     setTouched(new Set());
+    setSuggested(null);
     create.reset();
   };
 
@@ -353,6 +413,7 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
           max_item_df: n("maxItemPct") / 100,
           threshold: n("similarityPct") / 100,
           max_word_df: n("maxWordPct") / 100,
+          ...(active.includes("minWeight") ? { min_weight: n("minWeight") } : {}),
           // In the chosen order; the pipeline skips what doesn't apply.
           node_attributes: chosenAttributes,
         },
@@ -390,6 +451,11 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
           </button>
         )}
       </div>
+      {suggested && (
+        <p className="suggested-note" role="status">
+          {SUGGESTED_NOTE}
+        </p>
+      )}
       <ParamRow
         id="relation"
         label="Relationship"
@@ -397,7 +463,7 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
       >
         <select
           id="relation"
-          className="select"
+          className={mark("relation", "select")}
           value={relation ?? ""}
           aria-describedby="relation-help"
           onChange={(e) => chooseRelation(e.target.value as Relation)}
@@ -429,7 +495,7 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
               >
                 <select
                   id="custom-entity"
-                  className={nodeEntry ? "select select-marked" : "select"}
+                  className={mark("entity", nodeEntry ? "select select-marked" : "select")}
                   style={groupStyle(nodeEntry?.granularity)}
                   value={custom.entity}
                   aria-describedby="custom-entity-help"
@@ -489,7 +555,7 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
                 >
                   <select
                     id="custom-link"
-                    className={linkEntry ? "select select-marked" : "select"}
+                    className={mark("link", linkEntry ? "select select-marked" : "select")}
                     style={groupStyle(linkEntry ? "links" : undefined)}
                     value={custom.link}
                     aria-describedby="custom-link-help"
@@ -514,7 +580,7 @@ export function BuildNetworkForm({ datasetId }: { datasetId: number }) {
                   >
                     <select
                       id="custom-model"
-                      className="select"
+                      className={mark("model", "select")}
                       value={custom.model}
                       aria-describedby="custom-model-help"
                       onChange={(e) => chooseModel(e.target.value)}

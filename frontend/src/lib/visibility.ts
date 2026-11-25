@@ -5,8 +5,8 @@
 //
 // - Group checkboxes: a node is hidden when its team is unchecked.
 // - Relationship types: hide EDGES of unchecked types only, never nodes. The
-//   panel no longer offers this control (every type stays checked); the rule
-//   stays for callers that set it.
+//   panel shows this control only once a type is unchecked (by the assistant),
+//   so it can be checked again by hand.
 // - Node attribute search: hides nodes that don't match (and so their edges).
 // - Edge attribute search: hides non-matching edges, and - only while it is
 //   active - nodes left with no visible edge. Nodes with no edges at all in the
@@ -25,6 +25,8 @@ export interface AttrFilter {
   attribute: string;
   /** Lower-cased, trimmed, non-empty terms. */
   values: string[];
+  /** The row as typed, shown again when the attribute rows are rebuilt. */
+  text?: string;
 }
 
 export interface FilterState {

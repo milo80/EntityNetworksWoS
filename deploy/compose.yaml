@@ -33,6 +33,10 @@ x-app: &app
     SMTP_USERNAME: ${SMTP_USERNAME:-}
     SMTP_PASSWORD: ${SMTP_PASSWORD:-}
     SMTP_FROM: ${SMTP_FROM:-}
+    # The chat assistant (Claude API); empty = off (see .env.example).
+    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ASSISTANT_MODEL: ${ASSISTANT_MODEL:-claude-haiku-5-5}
+    ASSISTANT_MESSAGES_PER_HOUR: ${ASSISTANT_MESSAGES_PER_HOUR:-30}
   volumes:
     - uploads:/data/uploads
 

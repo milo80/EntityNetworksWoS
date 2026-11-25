@@ -896,10 +896,133 @@
           }
         }
       }
+    },
+    "/api/assistant/status": {
+      "get": {
+        "tags": [
+          "assistant"
+        ],
+        "summary": "Assistant Status",
+        "description": "Whether the assistant is on (an API key is configured).",
+        "operationId": "assistant_status_api_assistant_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantStatusOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assistant/chat": {
+      "post": {
+        "tags": [
+          "assistant"
+        ],
+        "summary": "Chat",
+        "description": "One answer to the conversation. Nothing is stored; only ids of what is open are used.\n\nThe reply may carry a proposal for the open dataset's Build network form and,\nwhile a network is open, explorer actions to apply in order. Nothing is built.",
+        "operationId": "chat_api_assistant_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A message is too long or the conversation doesn't end with one"
+          },
+          "429": {
+            "description": "Too many messages this hour"
+          },
+          "502": {
+            "description": "The Claude API failed or timed out"
+          },
+          "503": {
+            "description": "The assistant is off on this server (no API key)"
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AddAttributeFilter": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "add_attribute_filter",
+            "title": "Kind"
+          },
+          "target": {
+            "type": "string",
+            "enum": [
+              "nodes",
+              "links"
+            ],
+            "title": "Target"
+          },
+          "attribute": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Attribute"
+          },
+          "values": {
+            "items": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Values"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "target",
+          "attribute",
+          "values"
+        ],
+        "title": "AddAttributeFilter",
+        "description": "Add (or replace) an attribute search row and apply it."
+      },
+      "AssistantStatusOut": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled"
+        ],
+        "title": "AssistantStatusOut"
+      },
       "AttributeOption": {
         "properties": {
           "key": {
@@ -1066,6 +1189,179 @@
           "files"
         ],
         "title": "Body_create_dataset_api_datasets_post"
+      },
+      "ChatContext": {
+        "properties": {
+          "page": {
+            "type": "string",
+            "enum": [
+              "datasets",
+              "dataset",
+              "data",
+              "records",
+              "explorer",
+              "local",
+              "other"
+            ],
+            "title": "Page",
+            "default": "other"
+          },
+          "dataset_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Id"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ChatContext",
+        "description": "Where the user is: the page and the ids of what is open (never its content)."
+      },
+      "ChatIn": {
+        "properties": {
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Messages",
+            "description": "The conversation, oldest first"
+          },
+          "context": {
+            "$ref": "#/components/schemas/ChatContext",
+            "default": {
+              "page": "other"
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "messages"
+        ],
+        "title": "ChatIn"
+      },
+      "ChatMessage": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "role",
+          "text"
+        ],
+        "title": "ChatMessage"
+      },
+      "ChatOut": {
+        "properties": {
+          "reply": {
+            "type": "string",
+            "title": "Reply",
+            "description": "Plain text"
+          },
+          "proposal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NetworkProposal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "actions": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/KeepLargestGroups"
+                },
+                {
+                  "$ref": "#/components/schemas/GroupsByRank"
+                },
+                {
+                  "$ref": "#/components/schemas/SetRelations"
+                },
+                {
+                  "$ref": "#/components/schemas/SetWeightRange"
+                },
+                {
+                  "$ref": "#/components/schemas/SetHideUnlinked"
+                },
+                {
+                  "$ref": "#/components/schemas/AddAttributeFilter"
+                },
+                {
+                  "$ref": "#/components/schemas/SetSearch"
+                },
+                {
+                  "$ref": "#/components/schemas/SelectMatch"
+                },
+                {
+                  "$ref": "#/components/schemas/Fit"
+                },
+                {
+                  "$ref": "#/components/schemas/Reset"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "kind",
+                "mapping": {
+                  "add_attribute_filter": "#/components/schemas/AddAttributeFilter",
+                  "fit": "#/components/schemas/Fit",
+                  "groups_by_rank": "#/components/schemas/GroupsByRank",
+                  "keep_largest_groups": "#/components/schemas/KeepLargestGroups",
+                  "reset": "#/components/schemas/Reset",
+                  "select_match": "#/components/schemas/SelectMatch",
+                  "set_hide_unlinked": "#/components/schemas/SetHideUnlinked",
+                  "set_relations": "#/components/schemas/SetRelations",
+                  "set_search": "#/components/schemas/SetSearch",
+                  "set_weight_range": "#/components/schemas/SetWeightRange"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Actions",
+            "description": "Explorer changes, to apply in order"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reply"
+        ],
+        "title": "ChatOut"
       },
       "Credentials": {
         "properties": {
@@ -1480,6 +1776,50 @@
         ],
         "title": "EntityOption"
       },
+      "Fit": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "fit",
+            "title": "Kind"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "Fit",
+        "description": "Fit the view to the visible graph."
+      },
+      "GroupsByRank": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "groups_by_rank",
+            "title": "Kind"
+          },
+          "ranks": {
+            "items": {
+              "type": "integer",
+              "maximum": 10000.0,
+              "minimum": 1.0
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Ranks"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "ranks"
+        ],
+        "title": "GroupsByRank",
+        "description": "Check the groups at these legend ranks (1 = largest); uncheck the rest."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1602,6 +1942,29 @@
           "relation"
         ],
         "title": "InstitutionKeywordRunCreate"
+      },
+      "KeepLargestGroups": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "keep_largest_groups",
+            "title": "Kind"
+          },
+          "n": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "N"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "n"
+        ],
+        "title": "KeepLargestGroups",
+        "description": "Check the n largest groups (legend order, not 'other'/'unknown'); uncheck the rest."
       },
       "LinkOption": {
         "properties": {
@@ -1932,6 +2295,131 @@
         ],
         "title": "NetworkOptionsOut"
       },
+      "NetworkProposal": {
+        "properties": {
+          "dataset_id": {
+            "type": "integer",
+            "title": "Dataset Id"
+          },
+          "entity": {
+            "type": "string",
+            "enum": [
+              "author",
+              "institution",
+              "corresponding_institution",
+              "country",
+              "organization",
+              "journal",
+              "funder",
+              "wos_category",
+              "research_area",
+              "article"
+            ],
+            "title": "Entity"
+          },
+          "link": {
+            "type": "string",
+            "enum": [
+              "same_article",
+              "keywords",
+              "author_keywords",
+              "keywords_plus",
+              "wos_categories",
+              "research_areas",
+              "funders",
+              "organizations",
+              "authors",
+              "article_title",
+              "journal",
+              "abstract",
+              "funding_text"
+            ],
+            "title": "Link"
+          },
+          "model": {
+            "type": "string",
+            "enum": [
+              "word_matching",
+              "word_overlap",
+              "character_similarity"
+            ],
+            "title": "Model"
+          },
+          "top_n": {
+            "type": "integer",
+            "title": "Top N"
+          },
+          "min_weight": {
+            "type": "integer",
+            "title": "Min Weight"
+          },
+          "min_shared": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Shared"
+          },
+          "max_item_df": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Item Df"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "max_word_df": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Word Df"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "description": "One line, e.g. 'Institution linked by Keywords, ...'"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dataset_id",
+          "entity",
+          "link",
+          "model",
+          "top_n",
+          "min_weight",
+          "min_shared",
+          "max_item_df",
+          "threshold",
+          "max_word_df",
+          "summary"
+        ],
+        "title": "NetworkProposal",
+        "description": "Custom-network settings a custom run accepts, for the user to check and build.\n\nThreshold fields the model doesn't use are null."
+      },
       "PasswordResetConfirm": {
         "properties": {
           "token": {
@@ -2128,6 +2616,22 @@
         ],
         "title": "Registration"
       },
+      "Reset": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "reset",
+            "title": "Kind"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "Reset",
+        "description": "Return the explorer to how it opened."
+      },
       "RunOut": {
         "properties": {
           "id": {
@@ -2236,6 +2740,29 @@
         ],
         "title": "RunOut"
       },
+      "SelectMatch": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "select_match",
+            "title": "Kind"
+          },
+          "n": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "N"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "n"
+        ],
+        "title": "SelectMatch",
+        "description": "Select the n-th node matching the name search (1 = first)."
+      },
       "SessionOut": {
         "properties": {
           "user": {
@@ -2253,6 +2780,124 @@
           "csrf_token"
         ],
         "title": "SessionOut"
+      },
+      "SetHideUnlinked": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_hide_unlinked",
+            "title": "Kind"
+          },
+          "on": {
+            "type": "boolean",
+            "title": "On"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "on"
+        ],
+        "title": "SetHideUnlinked",
+        "description": "Turn 'Hide nodes without visible links' on or off."
+      },
+      "SetRelations": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_relations",
+            "title": "Kind"
+          },
+          "relations": {
+            "items": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Relations"
+          },
+          "visible": {
+            "type": "boolean",
+            "title": "Visible"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "relations",
+          "visible"
+        ],
+        "title": "SetRelations",
+        "description": "Show or hide the links of these relation types."
+      },
+      "SetSearch": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_search",
+            "title": "Kind"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Text"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "text"
+        ],
+        "title": "SetSearch",
+        "description": "Set the 'Find by node name' text (empty clears it)."
+      },
+      "SetWeightRange": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "set_weight_range",
+            "title": "Kind"
+          },
+          "min": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min"
+          },
+          "max": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "min",
+          "max"
+        ],
+        "title": "SetWeightRange",
+        "description": "Show links with a weight in [min, max]; null = no bound on that side."
       },
       "UserOut": {
         "properties": {

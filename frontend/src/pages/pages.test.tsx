@@ -10,6 +10,7 @@ import { MemoryRouter } from "react-router";
 import { App } from "../App";
 import { clearFormState } from "../lib/buildFormState";
 import { forgetNetwork, rememberNetwork } from "../lib/lastNetwork";
+import { OPTIONS as ASSISTANT_OPTIONS, PROPOSAL, answer, ask } from "../test/assistant";
 import { SESSION, mockApi } from "../test/mockApi";
 import profile from "../test/synthetic_profile.json";
 
@@ -1512,5 +1513,94 @@ describe("records", () => {
     recordsApp(path);
     await table();
     expect(headers()).not.toContain("Keywords (normalized)");
+  });
+});
+
+describe("assistant proposals", () => {
+  it("fills and highlights the build form from an assistant proposal without building", async () => {
+    const runs: object[] = [];
+    const { calls } = mockApi({
+      "GET /auth/me": () => ({ body: SESSION }),
+      "GET /assistant/status": () => ({ body: { enabled: true } }),
+      "GET /datasets/7": () => ({ body: DATASET }),
+      "GET /datasets/7/network-options": () => ({ body: ASSISTANT_OPTIONS }),
+      "GET /runs?dataset_id=7": () => ({ body: runs }),
+      "POST /assistant/chat": () => ({ body: answer("Try countries.", { proposal: PROPOSAL }) }),
+      "POST /runs": (req) => {
+        const run = {
+          id: 4,
+          dataset_id: 7,
+          status: "queued",
+          error: null,
+          node_count: null,
+          edge_count: null,
+          created_at: "2026-11-12T10:00:00Z",
+          started_at: null,
+          finished_at: null,
+          ...(req.body as object),
+        };
+        runs.push(run);
+        return { status: 202, body: run };
+      },
+    });
+    const user = renderApp("/datasets/7");
+    const form = await screen.findByRole("form", { name: "Build network" });
+    // The user had opened the custom network with its defaults.
+    await user.selectOptions(within(form).getByLabelText("Relationship"), "custom");
+    expect(await within(form).findByLabelText("Nodes")).toHaveValue("institution");
+    expect(within(form).queryByLabelText("Minimum link weight")).toBeNull();
+
+    const panel = await ask(user, "Countries that share keywords");
+    await within(panel).findByText("Try countries.");
+    expect(within(panel).getByText("Filled in the Build network form.")).toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Open in Build form" })).toBeNull();
+
+    expect(within(form).getByRole("status")).toHaveTextContent(
+      "Suggested by the assistant. Check the settings and click Build.",
+    );
+    const value = (label: string) => within(form).getByLabelText(label);
+    expect(value("Nodes")).toHaveValue("country");
+    expect(value("Maximum nodes")).toHaveValue(150);
+    expect(value("Minimum shared items")).toHaveValue(4);
+    expect(value("Ignore items used by more than (%)")).toHaveValue(10);
+    expect(value("Minimum link weight")).toHaveValue(2);
+    // Each changed field is highlighted; the unchanged ones are not.
+    for (const label of [
+      "Nodes",
+      "Maximum nodes",
+      "Minimum shared items",
+      "Ignore items used by more than (%)",
+      "Minimum link weight",
+    ]) {
+      expect(value(label)).toHaveClass("suggested");
+    }
+    for (const label of ["Relationship", "Linked by", "Model"]) {
+      expect(value(label)).not.toHaveClass("suggested");
+    }
+    // Nothing is built until the user clicks Build.
+    expect(calls.some((c) => c.method === "POST" && c.path === "/runs")).toBe(false);
+
+    // The user can change any value first.
+    await user.clear(value("Maximum nodes"));
+    await user.type(value("Maximum nodes"), "120");
+    await user.click(within(form).getByRole("button", { name: "Build network" }));
+    const post = calls.find((c) => c.method === "POST" && c.path === "/runs")!;
+    expect(post.body).toMatchObject({
+      dataset_id: 7,
+      relation: "custom",
+      params: {
+        entity: "country",
+        link: "keywords",
+        model: "word_matching",
+        top_n: 120,
+        min_shared: 4,
+        max_item_df: 0.1,
+        min_weight: 2,
+      },
+    });
+    expect(calls.filter((c) => c.method === "POST" && c.path === "/runs")).toHaveLength(1);
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("Country linked by Keywords")).toBeInTheDocument();
+    expect(within(form).queryByText(/Suggested by the assistant/)).toBeNull();
   });
 });

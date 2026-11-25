@@ -6,7 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -56,9 +56,24 @@ class Settings(BaseSettings):
     # In dev the Vite proxy and in prod Caddy keep everything same-origin.
     allowed_origins: list[str] = []
 
+    # Assistant (Claude API). Without a key the assistant is off.
+    anthropic_api_key: SecretStr | None = None
+    assistant_model: str = "claude-haiku-5-5"
+    assistant_messages_per_hour: int = Field(30, ge=1)
+
     # Worker
     worker_poll_seconds: float = Field(2.0, gt=0)
     worker_max_attempts: int = Field(3, ge=1)
+
+    @field_validator("anthropic_api_key", mode="after")
+    @classmethod
+    def _empty_key_is_none(cls, value: SecretStr | None) -> SecretStr | None:
+        # Compose passes ANTHROPIC_API_KEY="" when it isn't set.
+        return value if value is not None and value.get_secret_value().strip() else None
+
+    @property
+    def assistant_enabled(self) -> bool:
+        return self.anthropic_api_key is not None
 
     @model_validator(mode="after")
     def _production_guards(self) -> Settings:

@@ -69,6 +69,7 @@ export function RunExplorerPage() {
       network={network.data}
       title={title}
       records={records}
+      runId={runId}
       back={
         <Link to={`/datasets/${run.data.dataset_id}`} className="back">
           ← {dataset.data?.name ?? "Dataset"}
