@@ -324,10 +324,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assistant/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Assistant Status
+         * @description Whether the assistant is on (an API key is configured).
+         */
+        get: operations["assistant_status_api_assistant_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/assistant/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Chat
+         * @description One answer to the conversation. Nothing is stored; only ids of what is open are used.
+         *
+         *     The reply may carry a proposal for the open dataset's Build network form and,
+         *     while a network is open, explorer actions to apply in order. Nothing is built.
+         */
+        post: operations["chat_api_assistant_chat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AddAttributeFilter
+         * @description Add (or replace) an attribute search row and apply it.
+         */
+        AddAttributeFilter: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "add_attribute_filter";
+            /**
+             * Target
+             * @enum {string}
+             */
+            target: "nodes" | "links";
+            /** Attribute */
+            attribute: string;
+            /** Values */
+            values: string[];
+        };
+        /** AssistantStatusOut */
+        AssistantStatusOut: {
+            /** Enabled */
+            enabled: boolean;
+        };
         /** AttributeOption */
         AttributeOption: {
             /**
@@ -411,6 +479,60 @@ export interface components {
              * @description WoS .xls exports
              */
             files: string[];
+        };
+        /**
+         * ChatContext
+         * @description Where the user is: the page and the ids of what is open (never its content).
+         */
+        ChatContext: {
+            /**
+             * Page
+             * @default other
+             * @enum {string}
+             */
+            page: "datasets" | "dataset" | "data" | "records" | "explorer" | "local" | "other";
+            /** Dataset Id */
+            dataset_id?: number | null;
+            /** Run Id */
+            run_id?: number | null;
+        };
+        /** ChatIn */
+        ChatIn: {
+            /**
+             * Messages
+             * @description The conversation, oldest first
+             */
+            messages: components["schemas"]["ChatMessage"][];
+            /**
+             * @default {
+             *       "page": "other"
+             *     }
+             */
+            context: components["schemas"]["ChatContext"];
+        };
+        /** ChatMessage */
+        ChatMessage: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
+            /** Text */
+            text: string;
+        };
+        /** ChatOut */
+        ChatOut: {
+            /**
+             * Reply
+             * @description Plain text
+             */
+            reply: string;
+            proposal?: components["schemas"]["NetworkProposal"] | null;
+            /**
+             * Actions
+             * @description Explorer changes, to apply in order
+             */
+            actions?: (components["schemas"]["KeepLargestGroups"] | components["schemas"]["GroupsByRank"] | components["schemas"]["SetRelations"] | components["schemas"]["SetWeightRange"] | components["schemas"]["SetHideUnlinked"] | components["schemas"]["AddAttributeFilter"] | components["schemas"]["SetSearch"] | components["schemas"]["SelectMatch"] | components["schemas"]["Fit"] | components["schemas"]["Reset"])[];
         };
         /** Credentials */
         Credentials: {
@@ -616,6 +738,30 @@ export interface components {
              */
             links: ("same_article" | "keywords" | "author_keywords" | "keywords_plus" | "wos_categories" | "research_areas" | "funders" | "organizations" | "authors" | "article_title" | "journal" | "abstract" | "funding_text")[];
         };
+        /**
+         * Fit
+         * @description Fit the view to the visible graph.
+         */
+        Fit: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "fit";
+        };
+        /**
+         * GroupsByRank
+         * @description Check the groups at these legend ranks (1 = largest); uncheck the rest.
+         */
+        GroupsByRank: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "groups_by_rank";
+            /** Ranks */
+            ranks: number[];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -689,6 +835,19 @@ export interface components {
              *     }
              */
             params: components["schemas"]["InstitutionKeywordParams"];
+        };
+        /**
+         * KeepLargestGroups
+         * @description Check the n largest groups (legend order, not 'other'/'unknown'); uncheck the rest.
+         */
+        KeepLargestGroups: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "keep_largest_groups";
+            /** N */
+            n: number;
         };
         /** LinkOption */
         LinkOption: {
@@ -803,6 +962,48 @@ export interface components {
             attributes: components["schemas"]["AttributeOption"][];
             defaults: components["schemas"]["CustomParams"];
         };
+        /**
+         * NetworkProposal
+         * @description Custom-network settings a custom run accepts, for the user to check and build.
+         *
+         *     Threshold fields the model doesn't use are null.
+         */
+        NetworkProposal: {
+            /** Dataset Id */
+            dataset_id: number;
+            /**
+             * Entity
+             * @enum {string}
+             */
+            entity: "author" | "institution" | "corresponding_institution" | "country" | "organization" | "journal" | "funder" | "wos_category" | "research_area" | "article";
+            /**
+             * Link
+             * @enum {string}
+             */
+            link: "same_article" | "keywords" | "author_keywords" | "keywords_plus" | "wos_categories" | "research_areas" | "funders" | "organizations" | "authors" | "article_title" | "journal" | "abstract" | "funding_text";
+            /**
+             * Model
+             * @enum {string}
+             */
+            model: "word_matching" | "word_overlap" | "character_similarity";
+            /** Top N */
+            top_n: number;
+            /** Min Weight */
+            min_weight: number;
+            /** Min Shared */
+            min_shared: number | null;
+            /** Max Item Df */
+            max_item_df: number | null;
+            /** Threshold */
+            threshold: number | null;
+            /** Max Word Df */
+            max_word_df: number | null;
+            /**
+             * Summary
+             * @description One line, e.g. 'Institution linked by Keywords, ...'
+             */
+            summary: string;
+        };
         /** PasswordResetConfirm */
         PasswordResetConfirm: {
             /** Token */
@@ -894,6 +1095,17 @@ export interface components {
             /** Password */
             password: string;
         };
+        /**
+         * Reset
+         * @description Return the explorer to how it opened.
+         */
+        Reset: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "reset";
+        };
         /** RunOut */
         RunOut: {
             /** Id */
@@ -927,6 +1139,19 @@ export interface components {
             /** Finished At */
             finished_at: string | null;
         };
+        /**
+         * SelectMatch
+         * @description Select the n-th node matching the name search (1 = first).
+         */
+        SelectMatch: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "select_match";
+            /** N */
+            n: number;
+        };
         /** SessionOut */
         SessionOut: {
             user: components["schemas"]["UserOut"];
@@ -935,6 +1160,62 @@ export interface components {
              * @description Send back in the X-CSRF-Token header on POST/PUT/PATCH/DELETE (also set as a readable cookie).
              */
             csrf_token: string;
+        };
+        /**
+         * SetHideUnlinked
+         * @description Turn 'Hide nodes without visible links' on or off.
+         */
+        SetHideUnlinked: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_hide_unlinked";
+            /** On */
+            on: boolean;
+        };
+        /**
+         * SetRelations
+         * @description Show or hide the links of these relation types.
+         */
+        SetRelations: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_relations";
+            /** Relations */
+            relations: string[];
+            /** Visible */
+            visible: boolean;
+        };
+        /**
+         * SetSearch
+         * @description Set the 'Find by node name' text (empty clears it).
+         */
+        SetSearch: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_search";
+            /** Text */
+            text: string;
+        };
+        /**
+         * SetWeightRange
+         * @description Show links with a weight in [min, max]; null = no bound on that side.
+         */
+        SetWeightRange: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "set_weight_range";
+            /** Min */
+            min: number | null;
+            /** Max */
+            max: number | null;
         };
         /** UserOut */
         UserOut: {
@@ -1592,6 +1873,78 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    assistant_status_api_assistant_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistantStatusOut"];
+                };
+            };
+        };
+    };
+    chat_api_assistant_chat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatOut"];
+                };
+            };
+            /** @description A message is too long or the conversation doesn't end with one */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many messages this hour */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The Claude API failed or timed out */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The assistant is off on this server (no API key) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

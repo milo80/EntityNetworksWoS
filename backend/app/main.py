@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import auth, datasets, health, runs
+from .api import assistant, auth, datasets, health, runs
 from .config import get_settings
 from .logging import configure_logging
 
@@ -44,7 +44,7 @@ def create_app() -> FastAPI:
             allow_headers=[settings.csrf_header, "Content-Type"],
         )
 
-    for module in (health, auth, datasets, runs):
+    for module in (health, auth, datasets, runs, assistant):
         app.include_router(module.router, prefix="/api")
     return app
 

@@ -23,6 +23,9 @@ os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["APP_ENV"] = "test"
 os.environ["COOKIE_SECURE"] = "false"
 os.environ["LOG_LEVEL"] = "WARNING"
+# No test may reach Anthropic: ignore a key in the shell or in backend/.env
+# (an empty value means "off"; the assistant tests use a scripted model).
+os.environ["ANTHROPIC_API_KEY"] = ""
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
@@ -101,10 +104,11 @@ def db(settings):
 
 @pytest.fixture
 def app(db, settings):
-    from app.auth.ratelimit import limiter
+    from app.auth.ratelimit import hourly_limiter, limiter
     from app.main import create_app
 
     limiter.reset()
+    hourly_limiter.reset()
     return create_app()
 
 

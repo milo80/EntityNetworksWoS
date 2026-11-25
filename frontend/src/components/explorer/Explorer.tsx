@@ -2,10 +2,13 @@
 // computes visibility once; graph and JSON both render from it.
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import type { ExplorerAction } from "../../api/client";
+import { applyAssistantActions } from "../../lib/assistantActions";
 import { groupStyles, orderedTeams, teamCounts } from "../../lib/colors";
 import { attrKeys, type Network } from "../../lib/network";
 import type { RecordsSource } from "../../lib/records";
 import { computeVisibility, initialFilterState, type FilterState } from "../../lib/visibility";
+import { useAssistantExplorer } from "../assistant/AssistantContext";
 import { DetailsPanel } from "./DetailsPanel";
 import { FilterPanel } from "./FilterPanel";
 import { GraphView } from "./GraphView";
@@ -23,12 +26,14 @@ interface Props {
   footer?: ReactNode;
   /** Where the network's records are: enables "Show records" on a selection. */
   records?: RecordsSource;
+  /** The network's run; null for a local file (the assistant only drives runs). */
+  runId?: number | null;
 }
 
 const MIN_SIDE = 200;
 const MIN_GRAPH = 320;
 
-export function Explorer({ network, title, actions, back, footer, records }: Props) {
+export function Explorer({ network, title, actions, back, footer, records, runId = null }: Props) {
   const styles = useMemo(() => groupStyles(network), [network]);
   const teams = useMemo(() => orderedTeams(network, styles), [network, styles]);
   const counts = useMemo(() => teamCounts(network), [network]);
@@ -42,6 +47,25 @@ export function Explorer({ network, title, actions, back, footer, records }: Pro
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Selection | null>(null);
   const [open, setOpen] = useState<"left" | "right" | null>(null);
+  const relations = useMemo(() => [...new Set(network.edges.map((e) => e.type))], [network]);
+
+  // The assistant's actions set the same state the controls do (group colors
+  // come from `styles`, which never changes with the filters).
+  const [attrVersion, setAttrVersion] = useState(0);
+  const [fitRequest, setFitRequest] = useState(0);
+  useAssistantExplorer(runId, (actions: ExplorerAction[]) => {
+    const result = applyAssistantActions(
+      actions,
+      { filters, search, selected },
+      { network, teams, nodeKeys, edgeKeys, weights },
+    );
+    setFilters(result.view.filters);
+    setSearch(result.view.search);
+    setSelected(result.view.selected);
+    if (result.attrRows) setAttrVersion((v) => v + 1);
+    if (result.fit) setFitRequest((v) => v + 1);
+    return result.lines;
+  });
 
   const visibility = useMemo(() => computeVisibility(network, filters), [network, filters]);
   const visibleNodes = useMemo(() => visibility.visibleNodes(), [visibility]);
@@ -97,6 +121,8 @@ export function Explorer({ network, title, actions, back, footer, records }: Pro
           edgeKeys={edgeKeys}
           weights={weights}
           shownLinks={visibleEdges.length}
+          relations={relations}
+          attrVersion={attrVersion}
         />
       </aside>
       {widths && (
@@ -150,6 +176,7 @@ export function Explorer({ network, title, actions, back, footer, records }: Pro
           search={q}
           selected={selected}
           onSelect={onSelect}
+          fitRequest={fitRequest}
         />
         {footer && <div className="ex-foot">{footer}</div>}
       </div>

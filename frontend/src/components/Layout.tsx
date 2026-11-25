@@ -3,10 +3,22 @@ import { Link, Outlet, useMatch, useNavigate } from "react-router";
 
 import { api } from "../api/client";
 import { useLogout, useSession } from "../auth/session";
+import { AssistantProvider, useAssistant } from "./assistant/AssistantContext";
+import { AssistantButton, AssistantPanel } from "./assistant/AssistantPanel";
 
+/** The logged-in app. The assistant's conversation lives as long as this does. */
 export function Layout() {
+  return (
+    <AssistantProvider>
+      <Shell />
+    </AssistantProvider>
+  );
+}
+
+function Shell() {
   const { data: session } = useSession();
   const logout = useLogout();
+  const assistant = useAssistant();
   const navigate = useNavigate();
 
   // The data page lives under /datasets/:id, so the default prefix match would
@@ -44,12 +56,17 @@ export function Layout() {
         <div className="topbar-title">
           <span className="app-title">Entity Networks</span>
           <div className="account">
+            <AssistantButton />
             <span className="account-email">{session?.user.email}</span>
             <button
               type="button"
               className="btn btn-sm"
               disabled={logout.isPending}
-              onClick={() => logout.mutate(undefined, { onSettled: () => navigate("/login") })}
+              onClick={() => {
+                assistant?.clear();
+                assistant?.setOpen(false);
+                logout.mutate(undefined, { onSettled: () => navigate("/login") });
+              }}
             >
               Log out
             </button>
@@ -70,9 +87,12 @@ export function Layout() {
           </Link>
         </nav>
       </header>
-      <main className="main">
-        <Outlet />
-      </main>
+      <div className="shell-body">
+        <main className="main">
+          <Outlet />
+        </main>
+        <AssistantPanel />
+      </div>
     </div>
   );
 }

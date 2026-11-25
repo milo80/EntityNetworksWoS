@@ -1,5 +1,5 @@
 import type { GroupStyle } from "../../lib/colors";
-import { prettyTeam, type Network } from "../../lib/network";
+import { prettyTeam, prettyType, type Network } from "../../lib/network";
 import type { AttrFilter, FilterState } from "../../lib/visibility";
 import { AttrSearch } from "./AttrSearch";
 import { WeightRange } from "./WeightRange";
@@ -20,6 +20,10 @@ interface Props {
   weights: number[];
   /** Links visible with all filters applied. */
   shownLinks: number;
+  /** Relation types in the network. */
+  relations: string[];
+  /** Changes when the attribute filters were set from outside (rebuilds the rows). */
+  attrVersion?: number;
 }
 
 function toggled(set: ReadonlySet<string>, value: string, on: boolean): Set<string> {
@@ -91,6 +95,28 @@ export function FilterPanel(p: Props) {
           })}
         </fieldset>
 
+        {/* Every type is checked unless the assistant hid one; then it can be checked again. */}
+        {state.relations.size < p.relations.length && (
+          <fieldset style={{ border: 0, margin: 0, padding: 0 }}>
+            <legend className="group-title">Relationship</legend>
+            {p.relations.map((type) => (
+              <label key={type} className="check">
+                <input
+                  type="checkbox"
+                  checked={state.relations.has(type)}
+                  onChange={(e) =>
+                    onChange({
+                      ...state,
+                      relations: toggled(state.relations, type, e.target.checked),
+                    })
+                  }
+                />
+                {prettyType(type)}
+              </label>
+            ))}
+          </fieldset>
+        )}
+
         <fieldset style={{ border: 0, margin: 0, padding: 0 }}>
           <legend className="group-title">Link weight</legend>
           <WeightRange
@@ -112,6 +138,7 @@ export function FilterPanel(p: Props) {
               Separate alternatives with ; (any can match). A node must match every row.
             </p>
             <AttrSearch
+              key={`nodes-${p.attrVersion ?? 0}`}
               label="Nodes"
               items={p.network.nodes}
               keys={p.nodeKeys}
@@ -119,6 +146,7 @@ export function FilterPanel(p: Props) {
               onApply={(nodeAttr: AttrFilter[]) => onChange({ ...state, nodeAttr })}
             />
             <AttrSearch
+              key={`links-${p.attrVersion ?? 0}`}
               label="Links"
               items={p.network.edges}
               keys={p.edgeKeys}

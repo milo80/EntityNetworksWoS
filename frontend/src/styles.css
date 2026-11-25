@@ -1381,3 +1381,121 @@ details > .param-group {
 .records-aside {
   display: contents;
 }
+
+/* ---------- Assistant: a panel beside the page ---------- */
+.shell-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.shell-body > .main {
+  flex: 1;
+  min-width: 0;
+}
+.btn-pressed {
+  background: var(--accent-wash);
+  border-color: var(--accent);
+}
+.assistant {
+  flex: none;
+  width: 360px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--hairline);
+  background: var(--plane);
+}
+.assistant-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--hairline);
+}
+.assistant-head-actions {
+  display: flex;
+  gap: var(--s2);
+}
+.assistant-log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+.chat-msg {
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+.chat-user {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius);
+  background: var(--accent-wash);
+  white-space: pre-wrap;
+}
+.chat-text {
+  white-space: pre-wrap;
+}
+.chat-lines {
+  margin: var(--s2) 0 0;
+  padding-left: var(--s4);
+  color: var(--ink-2);
+}
+.chat-proposal {
+  display: grid;
+  justify-items: start;
+  gap: var(--s2);
+  margin-top: var(--s2);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.assistant-form {
+  display: grid;
+  gap: var(--s2);
+  padding: var(--s3) var(--s4) var(--s4);
+  border-top: 1px solid var(--hairline);
+}
+.assistant-input {
+  min-height: 72px;
+  resize: vertical;
+  font: inherit;
+  font-size: var(--text-sm);
+}
+.assistant-send {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+/* Build network form: the controls an assistant proposal changed. */
+.suggested {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-wash);
+}
+.suggested-note {
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius);
+  background: var(--accent-wash);
+  font-size: var(--text-sm);
+}
+/* Tablet and phone: the panel lies over the page's right side. */
+@media (max-width: 1023px) {
+  .assistant {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    width: min(360px, 92vw);
+    box-shadow:
+      0 0 0 1px var(--hairline),
+      0 8px 24px rgba(0, 0, 0, 0.12);
+  }
+}

@@ -23,9 +23,24 @@ interface Props {
   onApply: (filters: AttrFilter[]) => void;
 }
 
+/** The applied filters as rows (as typed), or one empty row. */
+function rowsOf(applied: readonly AttrFilter[], keys: string[]): AttrRow[] {
+  return applied.length
+    ? applied.map((f) => ({ key: f.attribute, value: f.text ?? f.values.join("; ") }))
+    : initialRows(keys);
+}
+
 export function AttrSearch({ label, items, keys, applied, onApply }: Props) {
-  const [rows, setRows] = useState<AttrRow[]>(() => initialRows(keys));
+  // Remounted (new key) when the filters change from outside, e.g. the assistant.
+  const [rows, setRows] = useState<AttrRow[]>(() => rowsOf(applied, keys));
   const uid = useId();
+  const apply = () =>
+    onApply(
+      parseAttrRows(rows).map((f) => ({
+        ...f,
+        text: rows.find((r) => r.key === f.attribute)?.value.trim(),
+      })),
+    );
 
   if (keys.length === 0) {
     return (
@@ -67,7 +82,7 @@ export function AttrSearch({ label, items, keys, applied, onApply }: Props) {
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  onApply(parseAttrRows(rows));
+                  apply();
                 }
               }}
             />
@@ -91,7 +106,7 @@ export function AttrSearch({ label, items, keys, applied, onApply }: Props) {
         );
       })}
       <div className="attr-actions">
-        <button type="button" className="btn btn-sm" onClick={() => onApply(parseAttrRows(rows))}>
+        <button type="button" className="btn btn-sm" onClick={apply}>
           Apply
         </button>
         {unusedKeys(rows, keys).length > 0 && (

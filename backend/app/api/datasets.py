@@ -124,7 +124,11 @@ def get_network_options(dataset_id: int, user: CurrentUser, db: Db) -> NetworkOp
     Availability comes from the dataset's profile (column fill). While the
     profile isn't ready, everything is offered.
     """
-    dataset = get_owned_dataset(db, user.id, dataset_id)
+    return network_options(get_owned_dataset(db, user.id, dataset_id))
+
+
+def network_options(dataset: Dataset) -> NetworkOptionsOut:
+    """The custom-network options of a dataset (see get_network_options)."""
     fill: dict[str, float] | None = None
     if dataset.profile_status == "ready" and dataset.profile:
         fill = {c["name"]: c["non_empty_pct"] for c in dataset.profile.get("schema", [])}
