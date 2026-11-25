@@ -34,6 +34,7 @@ backend/var/
 
 # Deployment
 deploy/backups/
+deploy/set-qa-key.sh
 # Playwright
 frontend/test-results/
 frontend/playwright-report/
