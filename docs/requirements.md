@@ -207,7 +207,7 @@ key, so no test may call Anthropic. Tests use a stand-in for the model, and the 
 stand in for the chat endpoint. Conversations are not stored on the server. The `README.md`
 section "What you can do" should describe the assistant once it is built.
 
-### REQ-AST-1 Ask the assistant about the platform: In progress
+### REQ-AST-1 Ask the assistant about the platform: Done
 *As a new user, I want to ask in plain words what entities, links, models, thresholds and explorer filters mean, so that I can build and read networks without studying the docs first.*
 - AC1: When the assistant is on, every logged-in page shows an "Assistant" button in the top bar. It opens a chat panel beside the current page without leaving that page. The panel has a message box, a "Send" button, a "New conversation" button and a "Close" button. `frontend/src/components/assistant/AssistantPanel.test.tsx::opens the chat panel from the top bar without leaving the page`
 - AC2: After the user sends a question, the question appears in the conversation, "Thinking…" is shown until the answer arrives, and then the answer appears. "Send" is disabled while waiting and while the message box is empty. `frontend/src/components/assistant/AssistantPanel.test.tsx::shows the question, a waiting state, then the answer`, `frontend/e2e/assistant.spec.ts::ask the assistant what a link model means`
@@ -218,7 +218,7 @@ section "What you can do" should describe the assistant once it is built.
 - AC7: The server stores nothing from a conversation: after a chat, no question or answer exists in the database or in the uploads. `backend/tests/api/test_api_assistant.py::test_chat_stores_nothing_on_the_server`
 - AC8: The assistant answers in the language the user writes in. Setting names, entity, link and model names stay as the app shows them. `backend/tests/test_assistant_tools.py::test_system_prompt_answers_in_the_users_language`
 
-### REQ-AST-2 Get suggested network settings: In progress
+### REQ-AST-2 Get suggested network settings: Done
 *As a new user, I want to describe what I want to see and get suggested settings for my dataset, so that I don't need to know which nodes, link field and model go together.*
 - AC1: When the user asks for a network while a dataset of theirs is open (its data page, build form, records or one of its networks), the reply may include one proposal for that dataset: entity, link field, model, the thresholds that model uses (the same fields the Build Network form shows for it), top-n and minimum link weight. `backend/tests/api/test_api_assistant.py::test_chat_returns_a_network_proposal_for_the_open_dataset`
 - AC2: A proposal is returned only if a custom run would accept it, meaning a compatible combination (REQ-NET-3 AC1) and every value within its range. Otherwise the reply contains no proposal and explains in plain words what doesn't fit. `backend/tests/test_assistant_tools.py::test_proposal_check_uses_the_custom_run_rules`, `backend/tests/api/test_api_assistant.py::test_invalid_proposal_is_not_returned`, `backend/tests/test_assistant_tools.py::test_proposal_shares_are_rounded_to_whole_percents`
@@ -227,7 +227,7 @@ section "What you can do" should describe the assistant once it is built.
 - AC5: When the proposal's dataset has its Build Network form open, the form switches to the custom network, fills in the proposed values, highlights each field the proposal changed, and shows "Suggested by the assistant. Check the settings and click Build." Nothing is built until the user clicks "Build", and the user can change any value first. `frontend/src/pages/pages.test.tsx::fills and highlights the build form from an assistant proposal without building`, `frontend/e2e/assistant.spec.ts::build a network from an assistant proposal`
 - AC6: On any other page, the proposal appears in the chat as a one-line summary (for example, "Institutions linked by Keywords, word matching, at least 3 shared") with an "Open in Build form" button. The button opens that dataset's Build Network form, filled in and highlighted as in AC5. `frontend/src/components/assistant/AssistantPanel.test.tsx::offers to open the build form with a proposal`
 
-### REQ-AST-3 Drive the explorer by chat: In progress
+### REQ-AST-3 Drive the explorer by chat: Done
 *As a user exploring a network, I want to say what I want to see, such as "only the 5 largest groups and the strongest links", so that I don't have to find each control.*
 - AC1: In the explorer, a reply may carry actions. The browser applies them in order, and the explorer's controls (group and relation checkboxes, weight range, hide-unlinked checkbox, attribute rows, search box) then show the result as if the user had set them, so the user can change them by hand. Under the reply, the panel lists one line per applied action, for example "Showing the 5 largest groups". `frontend/src/components/explorer/Explorer.test.tsx::applies assistant actions to the explorer controls`, `frontend/e2e/assistant.spec.ts::filter the explorer by chat`
 - AC2: "Keep the N largest groups" checks the first N groups in legend order (largest first, REQ-EXP-2 AC2), not counting "other" and "unknown", and unchecks every other group. Groups can also be chosen by rank, as in "groups 2 and 3". Group colors do not change. `frontend/src/components/explorer/Explorer.test.tsx::assistant keeps the N largest groups without repainting them`
@@ -239,7 +239,7 @@ section "What you can do" should describe the assistant once it is built.
 - AC8: The API returns only actions of the kinds in AC2 to AC7, with values of the right type. Any other action, or an action with invalid values, is dropped before it reaches the browser. `backend/tests/api/test_api_assistant.py::test_explorer_actions_are_validated`
 - AC9: When no network is open, a reply carries no explorer actions. `backend/tests/api/test_api_assistant.py::test_no_explorer_actions_without_an_open_network`, `backend/tests/api/test_api_assistant.py::test_local_file_context_says_chat_cannot_drive_it`, `frontend/src/components/assistant/AssistantPanel.test.tsx::applies actions only to the network the question was about`, `frontend/src/components/assistant/AssistantPanel.test.tsx::tells the server a local file is open on the local explorer`
 
-### REQ-AST-4 Only metadata about my data reaches the model: In progress
+### REQ-AST-4 Only metadata about my data reaches the model: Done
 *As a researcher, I want the names and values in my data to stay on the platform, so that I can use the assistant on unpublished or sensitive exports.*
 - AC1: About the user's dataset or network, the model receives only metadata: which entities, link fields and models are available, counts (articles, nodes, links), group sizes by rank, relation type names, the link weight range, attribute names, and the distributions of attribute values as counts only. `backend/tests/test_assistant_tools.py::test_dataset_tool_returns_only_metadata`, `backend/tests/test_assistant_tools.py::test_network_tool_returns_only_metadata`
 - AC2: No node label, group name, attribute value, record value, dataset name or file name from the user's data is ever sent to the model. In a conversation where the model uses every tool on a known dataset and network, none of their labels, group names or attribute values appear in anything sent to the model. Text the user typed is sent as typed. `backend/tests/api/test_api_assistant.py::test_no_data_values_reach_the_model`
@@ -247,7 +247,7 @@ section "What you can do" should describe the assistant once it is built.
 - AC4: The browser sends only the conversation text and the id of the open dataset or network. It never sends node names, search matches or the network itself. `frontend/src/components/assistant/AssistantPanel.test.tsx::sends only the conversation and the open dataset or network id`
 - AC5: Above the message box, the panel says: "Your messages are sent to Anthropic's Claude. Names and values from your data are not, unless you type them." `frontend/src/components/assistant/AssistantPanel.test.tsx::says what is sent to Anthropic`
 
-### REQ-AST-5 The assistant is optional and has limits: In progress
+### REQ-AST-5 The assistant is optional and has limits: Done
 *As the operator, I want the assistant to be off unless a key is set, and to stay within limits, so that the app works without it and costs stay bounded.*
 - AC1: Without `ANTHROPIC_API_KEY`, `POST /api/assistant/chat` returns 503 with "The assistant is not available on this server." `backend/tests/api/test_api_assistant.py::test_chat_is_503_without_an_api_key`
 - AC2: When the assistant is off, no page shows the "Assistant" button, and every other feature works as before. `frontend/src/components/assistant/AssistantPanel.test.tsx::hides the Assistant button when the assistant is off`
