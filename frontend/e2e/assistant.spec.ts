@@ -2,7 +2,7 @@
 // endpoints are stood in for with page.route: these tests check the UI and what
 // it does with a reply (the API side is in backend/tests/api/test_api_assistant.py).
 // The dataset, the build and the explorer are real.
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Cookie, type Page, type Route } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -26,12 +26,21 @@ function collectErrors(page: Page): string[] {
   return errors;
 }
 
+// One session per worker: the API allows 10 logins a minute per client, and the
+// whole e2e run shares one IP, so logging in through the form in every test
+// would trip it. The form itself is covered by smoke.spec.ts.
+let sessionCookies: Cookie[] = [];
+
 test.beforeAll(async ({ request }) => {
-  if (process.env.E2E_EMAIL) return;
   const creds = { data: { email: EMAIL, password: PASSWORD } };
-  if ((await request.post("/api/auth/login", creds)).ok()) return;
-  const r = await request.post("/api/auth/register", creds);
-  expect([201, 409], await r.text()).toContain(r.status());
+  let r = await request.post("/api/auth/login", creds);
+  if (!r.ok() && !process.env.E2E_EMAIL) {
+    r = await request.post("/api/auth/register", creds);
+    // Another worker registered it first.
+    if (r.status() === 409) r = await request.post("/api/auth/login", creds);
+  }
+  expect(r.ok(), await r.text()).toBe(true);
+  sessionCookies = (await request.storageState()).cookies;
 });
 
 /** Turns the assistant on and answers each question with `reply(body)`. */
@@ -49,12 +58,10 @@ async function standInForAssistant(page: Page, reply: (body: ChatBody) => object
 }
 
 async function logIn(page: Page) {
+  await page.context().addCookies(sessionCookies);
   await page.goto("/");
-  await page.getByLabel("Email").fill(EMAIL);
-  await page.getByLabel("Password").fill(PASSWORD);
-  await page.getByRole("button", { name: "Log in" }).click();
   await expect(page.getByRole("heading", { name: "Datasets" })).toBeVisible();
-  const csrf = (await page.context().cookies()).find((c) => c.name === "entitynet_csrf")!.value;
+  const csrf = sessionCookies.find((c) => c.name === "entitynet_csrf")!.value;
   return { "X-CSRF-Token": csrf };
 }
 
