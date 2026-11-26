@@ -17,6 +17,31 @@ WoS, upload the files, and explore the network in your browser. No programming n
   show which institutions or funders are active in a field, or help a researcher find
   partners.
 
+## Ask the assistant
+
+A chat assistant is built in (when the server has it on). Open it from the top bar on any
+page and write in your own language.
+
+- **Get started without a tutorial.** Ask what nodes, links, models, settings and filters
+  mean, or what to do next on the page you're on.
+- **Describe your goal, get a network suggestion.** For example, "find institutions working
+  on topics close to mine". The assistant picks the nodes, link field, model and thresholds
+  that fit your dataset, checks that the app would accept them, and fills in the Build
+  network form. It highlights what it changed. You review the settings and click Build.
+- **It already knows how the app reads WoS data.** It knows which WoS fields each kind of
+  node and link needs, which combinations work, and every setting's default and range. For
+  your dataset it looks up what the data supports, how many articles it has, and the groups
+  and link weights of its networks.
+- **Change the view by chat.** In the explorer, say what you want to see ("only the 5
+  largest groups and the strongest links") and the filters are set for you. You can still
+  change them by hand.
+
+Only metadata about your data (counts, which fields are filled, attribute names) reaches the
+model, Anthropic's Claude. Names and values (authors, institutions, keywords, titles) stay
+on the platform unless you type them. That's also why the assistant can't answer questions
+about what your records say, such as who publishes most on a topic. It doesn't build
+anything for you, and conversations are not stored.
+
 ## What you can do
 
 1. **Upload a WoS export** (the `.xls` files WoS saves) as a dataset.
@@ -36,13 +61,7 @@ WoS, upload the files, and explore the network in your browser. No programming n
    attribute (for example country or research area), keep only the strongest links,
    and click any node or link to see why it is there. Download the network as JSON to
    use it in other tools.
-5. **Ask the assistant** (when the server has it on): ask in your own language what
-   entities, links, models and filters mean, describe the network you want and get
-   settings filled into the Build network form (you check them and click Build), or
-   say what to show in the explorer ("only the 5 largest groups and the strongest
-   links"). Only metadata about your data (counts, availability, attribute names)
-   reaches the model, Anthropic's Claude: names and values stay on the platform
-   unless you type them. Nothing is built for you and conversations are not stored.
+5. **Ask the assistant** for help at any step (see [Ask the assistant](#ask-the-assistant)).
 
 ## Coming next
 
@@ -83,6 +102,8 @@ The rest of this file is for developers: layout, setup, tests and the API.
 - Step 7: custom networks - choose the nodes (entity), the field that links
   them and the model that compares it (`backend/pipeline/custom.py`, see
   `docs/design-notes.md`).
+- Step 8 (done): in-app chat assistant (`backend/app/services/assistant/`, REQ-AST in
+  `docs/requirements.md`).
 
 ## Where things are documented
 
