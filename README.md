@@ -5,7 +5,7 @@ Entity Networks turns your [Web of Science](https://www.webofscience.com/) (WoS)
 results into interactive maps of people, institutions and topics. Export the records from
 WoS, upload the files, and explore the network in your browser. No programming needed.
 
-![Entity Networks: exploring a network, filtering it, viewing the data and building a custom network](docs/images/demo.gif)
+![Entity Networks: building a custom network, exploring and filtering it, checking the records behind a node, and asking the assistant for a network and for filters](docs/images/demo.gif)
 
 ## Who it is for
 
