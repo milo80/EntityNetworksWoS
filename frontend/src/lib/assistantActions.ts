@@ -25,6 +25,12 @@ export interface ActionScope {
 export interface ActionResult {
   view: ExplorerView;
   lines: string[];
+  /**
+   * The actions that took effect, in order (sent back with the conversation). An
+   * action that changed nothing is left out; one that took effect in part keeps
+   * only the ranks or relations it found. Never a node name.
+   */
+  applied: ExplorerAction[];
   /** The view should be fitted to the visible graph. */
   fit: boolean;
   /** The attribute rows changed and must show the applied filters. */
@@ -69,6 +75,8 @@ export function applyAssistantActions(
   let fit = false;
   let attrRows = false;
   const lines: string[] = [];
+  const applied: ExplorerAction[] = [];
+  const took = (action: ExplorerAction) => applied.push(action);
   const setFilters = (patch: Partial<FilterState>) => {
     view = { ...view, filters: { ...view.filters, ...patch } };
   };
@@ -83,6 +91,7 @@ export function applyAssistantActions(
             ? "Showing the largest group"
             : `Showing the ${kept.length} largest groups`,
         );
+        took(action);
         break;
       }
       case "groups_by_rank": {
@@ -92,6 +101,7 @@ export function applyAssistantActions(
         if (found.length) {
           setFilters({ teams: new Set(found.map((r) => ranked[r - 1]!)) });
           lines.push(`Showing ${plural(found.length, "group", "groups")} ${listed(found)}`);
+          took({ ...action, ranks: found });
         }
         if (missing.length) {
           lines.push(
@@ -104,6 +114,7 @@ export function applyAssistantActions(
       case "set_relations": {
         const next = new Set(view.filters.relations);
         const changed: string[] = [];
+        const found: string[] = [];
         for (const name of action.relations) {
           const type = findName(name, relations, prettyType);
           if (!type) {
@@ -113,10 +124,12 @@ export function applyAssistantActions(
           if (action.visible) next.add(type);
           else next.delete(type);
           changed.push(prettyType(type));
+          found.push(name);
         }
         if (changed.length) {
           setFilters({ relations: next });
           lines.push(`${action.visible ? "Showing" : "Hiding"} links of type ${listed(changed)}`);
+          took({ ...action, relations: found });
         }
         break;
       }
@@ -130,6 +143,7 @@ export function applyAssistantActions(
         const max = clamp(action.max ?? highest);
         setFilters({ weightRange: min <= lowest && max >= highest ? null : { min, max } });
         lines.push(`Showing links of weight ${min}–${max}`);
+        took(action);
         break;
       }
       case "set_hide_unlinked":
@@ -137,6 +151,7 @@ export function applyAssistantActions(
         lines.push(
           action.on ? "Hiding nodes without visible links" : "Showing nodes without visible links",
         );
+        took(action);
         break;
       case "add_attribute_filter": {
         const nodes = action.target === "nodes";
@@ -156,6 +171,7 @@ export function applyAssistantActions(
         setFilters(nodes ? { nodeAttr: next } : { edgeAttr: next });
         attrRows = true;
         lines.push(`Filtering ${nodes ? "nodes" : "links"} by ${key}: ${text}`);
+        took(action);
         break;
       }
       case "set_search": {
@@ -166,6 +182,7 @@ export function applyAssistantActions(
             ? `Searching for "${action.text}": ${count} ${plural(count, "match", "matches")}`
             : "Cleared the name search",
         );
+        took(action);
         break;
       }
       case "select_match": {
@@ -179,19 +196,22 @@ export function applyAssistantActions(
         } else {
           view = { ...view, selected: { kind: "node", id: node.id } };
           lines.push(`Selected ${node.name}`);
+          took(action); // the match number, never the node's name
         }
         break;
       }
       case "fit":
         fit = true;
         lines.push("Fitted the view to the visible graph");
+        took(action);
         break;
       case "reset":
         view = { filters: initialFilterState(network), search: "", selected: null };
         attrRows = true;
         lines.push("Reset the explorer");
+        took(action);
         break;
     }
   }
-  return { view, lines, fit, attrRows };
+  return { view, lines, applied, fit, attrRows };
 }

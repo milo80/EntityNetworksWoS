@@ -25,12 +25,20 @@ export interface Entry {
   proposal?: NetworkProposal | null;
   /** The proposal was put into its dataset's Build network form. */
   proposalApplied?: boolean;
-  /** One line per explorer action that was applied. */
+  /** One line per explorer action that was applied (shown only: lines may name nodes). */
   lines?: string[];
+  /** The explorer actions that were applied, sent back with the conversation. */
+  actions?: ExplorerAction[];
 }
 
-/** Applies explorer actions in order; returns one line per action. */
-export type ExplorerHandler = (actions: ExplorerAction[]) => string[];
+/** What applying explorer actions did: the lines shown, and the actions that took effect. */
+export interface AppliedActions {
+  lines: string[];
+  applied: ExplorerAction[];
+}
+
+/** Applies explorer actions in order. */
+export type ExplorerHandler = (actions: ExplorerAction[]) => AppliedActions;
 /** Fills a Build network form with a proposal. */
 export type ProposalHandler = (proposal: NetworkProposal) => void;
 
@@ -45,7 +53,7 @@ interface AssistantValue {
    * Apply actions to the explorer of network `runId` (the one open when the
    * message was sent); null when that network's explorer isn't open.
    */
-  applyActions: (runId: number | null, actions: ExplorerAction[]) => string[] | null;
+  applyActions: (runId: number | null, actions: ExplorerAction[]) => AppliedActions | null;
   /** Fill the open Build network form of the proposal's dataset; false when none is open. */
   applyProposal: (proposal: NetworkProposal) => boolean;
   /** Keep a proposal for the Build network form that opens next for its dataset. */

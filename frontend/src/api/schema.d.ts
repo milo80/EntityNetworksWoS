@@ -510,7 +510,12 @@ export interface components {
              */
             context: components["schemas"]["ChatContext"];
         };
-        /** ChatMessage */
+        /**
+         * ChatMessage
+         * @description One message. An assistant reply also carries back what it did in the browser.
+         *
+         *     A proposal or action that a reply could not carry is dropped, not refused.
+         */
         ChatMessage: {
             /**
              * Role
@@ -519,6 +524,18 @@ export interface components {
             role: "user" | "assistant";
             /** Text */
             text: string;
+            /** @description Assistant replies: the proposal the reply returned */
+            proposal?: components["schemas"]["NetworkProposal"] | null;
+            /**
+             * Proposal Filled Form
+             * @description With a proposal: true if it filled in the Build network form, false if it was offered with 'Open in Build form'
+             */
+            proposal_filled_form?: boolean | null;
+            /**
+             * Actions
+             * @description Assistant replies: the explorer actions that were applied, in order (only the first 100 valid ones are used)
+             */
+            actions?: (components["schemas"]["KeepLargestGroups"] | components["schemas"]["GroupsByRank"] | components["schemas"]["SetRelations"] | components["schemas"]["SetWeightRange"] | components["schemas"]["SetHideUnlinked"] | components["schemas"]["AddAttributeFilter"] | components["schemas"]["SetSearch"] | components["schemas"]["SelectMatch"] | components["schemas"]["Fit"] | components["schemas"]["Reset"])[];
         };
         /** ChatOut */
         ChatOut: {

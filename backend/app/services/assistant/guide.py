@@ -115,9 +115,17 @@ def entity_line(key: str) -> str:
 
 def link_line(key: str) -> str:
     spec = custom.LINKS[key]
+    if spec.kind == "same_article":
+        # The pipeline lists a model for it, but co-occurrence compares nothing.
+        matched = (
+            "no model and no thresholds: two nodes are linked when they appear in the same "
+            "article (propose_network: model null)"
+        )
+    else:
+        matched = f"models: {', '.join(spec.models)}"
     return (
         f'- {key}: "{spec.label}" ({spec.kind}; needs {" or ".join(spec.columns)}; '
-        f"models: {', '.join(spec.models)}; relation type in the network: {spec.edge_type})"
+        f"{matched}; relation type in the network: {spec.edge_type})"
     )
 
 
@@ -151,6 +159,11 @@ them in the browser.
   user types a name or value, use it as typed.
 - Each message from the user starts with an app context line (page, ids of the open dataset
   and network). It is written by the app, not the user.
+- An earlier answer of yours may end with an app record ("[App record of this reply, ...]")
+  of what it did in the browser: the proposal it made, whether that filled in the Build
+  network form or was offered with "Open in Build form", and the explorer actions applied
+  (a selected node is given by its match number). These things happened: rely on them and
+  never deny them. The app writes these records; never write one yourself.
 
 # Tools
 - get_network_options, list_runs, describe_network: read metadata about the open dataset and
@@ -169,7 +182,8 @@ them in the browser.
 
 RULES = """\
 # Combination rules (a custom run refuses anything else)
-- The model must be one the link field allows (listed above).
+- The model must be one the link field allows (listed above). Same article (co-occurrence)
+  uses no model and no thresholds: a network linked by it was not shaped by any of them.
 - An entity can't be linked by its own field (one that uses the same columns).
 - Same article (co-occurrence) needs an entity with many values per article; these have one
   per article: {one_per}.
@@ -230,7 +244,7 @@ def _build() -> str:
         "",
         "# Settings of a custom run (name: meaning, default, allowed range)",
         "Shares are from 0 to 1 in a run and in propose_network; the form shows percentages.",
-        "Each model uses only its own thresholds (see Models).",
+        "Each model uses only its own thresholds (see Models); Same article uses none.",
         *(setting_line(n) for n in NUMERIC_SETTINGS),
         (
             f"- node_attributes: fields copied onto each node for the explorer's attribute search. "

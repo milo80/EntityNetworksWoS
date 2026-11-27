@@ -1,6 +1,7 @@
 // The assistant's chat: a top-bar button and a panel beside the current page.
 // Answers are plain text (rendered as text, never as HTML). The browser sends
-// only the conversation and the ids of the open dataset or network.
+// only the conversation (with what earlier replies did: proposal settings, action
+// kinds and values) and the ids of the open dataset or network.
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMatch, useNavigate } from "react-router";
@@ -9,6 +10,7 @@ import {
   ApiError,
   api,
   type ChatContext,
+  type ChatMessage,
   type ChatReply,
   type NetworkProposal,
 } from "../../api/client";
@@ -94,6 +96,22 @@ function useChatContext(): ChatContext {
   return { page: onDatasets ? "datasets" : "other", dataset_id: null, run_id: null };
 }
 
+/**
+ * One message as sent: its text and, for a reply, what it did here (its proposal and
+ * whether that filled in the Build network form, and the explorer actions applied).
+ * Never the panel's action lines: "Selected <node name>" would send a node's name.
+ */
+function toMessage(e: Entry): ChatMessage {
+  if (e.role !== "assistant") return { role: "user", text: e.text };
+  const message: ChatMessage = { role: "assistant", text: e.text };
+  if (e.proposal) {
+    message.proposal = e.proposal;
+    message.proposal_filled_form = e.proposalApplied === true;
+  }
+  if (e.actions?.length) message.actions = e.actions;
+  return message;
+}
+
 let nextId = 1;
 
 export function AssistantPanel() {
@@ -120,17 +138,18 @@ export function AssistantPanel() {
         history
           .filter((e) => e.role !== "error" && !e.failed)
           .slice(-MAX_SENT)
-          .map((e) => ({ role: e.role as "user" | "assistant", text: e.text })),
+          .map(toMessage),
         sentContext,
       ),
     onSuccess: (reply: ChatReply, sent) => {
       if (!assistant || sent.epoch !== epoch.current) return;
       const actions = reply.actions ?? [];
       // Only to the network the question was about, if its explorer is still open.
+      const result = actions.length
+        ? assistant.applyActions(sent.context.run_id ?? null, actions)
+        : null;
       const lines = actions.length
-        ? (assistant.applyActions(sent.context.run_id ?? null, actions) ?? [
-            "Open the network in the explorer to apply these changes.",
-          ])
+        ? (result?.lines ?? ["Open the network in the explorer to apply these changes."])
         : undefined;
       const applied = reply.proposal ? assistant.applyProposal(reply.proposal) : false;
       assistant.setEntries((entries) => [
@@ -142,6 +161,8 @@ export function AssistantPanel() {
           proposal: reply.proposal ?? null,
           proposalApplied: applied,
           lines,
+          // Only what took effect is sent back (never the lines: they may name nodes).
+          actions: result?.applied,
         },
       ]);
     },

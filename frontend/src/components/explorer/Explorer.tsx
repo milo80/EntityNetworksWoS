@@ -64,7 +64,7 @@ export function Explorer({ network, title, actions, back, footer, records, runId
     setSelected(result.view.selected);
     if (result.attrRows) setAttrVersion((v) => v + 1);
     if (result.fit) setFitRequest((v) => v + 1);
-    return result.lines;
+    return { lines: result.lines, applied: result.applied };
   });
 
   const visibility = useMemo(() => computeVisibility(network, filters), [network, filters]);
