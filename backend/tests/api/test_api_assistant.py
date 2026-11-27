@@ -358,7 +358,8 @@ def _values(value) -> set[str]:
     return set()
 
 
-def test_no_data_values_reach_the_model(client, fake, db, run, dataset):
+def _data_secrets(client, run, dataset) -> set[str]:
+    """Labels, group names, attribute and record values, dataset and file names."""
     network = client.get(f"/api/runs/{run['id']}/network").json()
     profile = client.get(f"/api/datasets/{dataset['id']}/profile").json()["profile"]
     records = client.get(f"/api/datasets/{dataset['id']}/records").json()["rows"]
@@ -379,7 +380,11 @@ def test_no_data_values_reach_the_model(client, fake, db, run, dataset):
         and v.strip() not in json.dumps(TOOLS)
     }
     assert {"Univ Parma", "Italy", "fetal ultrasound", "Unpublished cohort Zyxq"} <= secret
+    return secret
 
+
+def test_no_data_values_reach_the_model(client, fake, db, run, dataset):
+    secret = _data_secrets(client, run, dataset)
     ids = {"dataset_id": dataset["id"]}
     fake.turns = [
         tools(
@@ -503,7 +508,9 @@ def test_chat_rejects_long_messages(client, fake):
 
 def _texts(call) -> list[str]:
     return [
-        m["content"] if isinstance(m["content"], str) else m["content"][-1]["text"]
+        m["content"]
+        if isinstance(m["content"], str)
+        else m["content"][-1 if m["role"] == "user" else 0]["text"]
         for m in call["messages"]
     ]
 
@@ -675,3 +682,317 @@ def test_local_file_context_says_chat_cannot_drive_it(client, fake):
     assert "a local network file is open in the explorer" in first
     assert "can't be read or changed by chat" in first
     assert 'context page "local"' in SYSTEM_PROMPT
+
+
+# ---------------------------------------------------------------- REQ-AST-6
+
+THRESHOLDS = {"min_shared", "max_item_df", "threshold", "max_word_df"}
+
+
+def test_same_article_network_reaches_the_model_without_thresholds(
+    client, fake, db, settings, dataset
+):
+    # Stored with every threshold (set here, and the defaults of the others).
+    params = {
+        "entity": "country",
+        "link": "same_article",
+        "min_shared": 1,
+        "max_item_df": 1,
+        "top_n": 50,
+        "max_authors": 40,
+    }
+    run = client.post(
+        "/api/runs", json={"dataset_id": dataset["id"], "relation": "custom", "params": params}
+    ).json()
+    assert run_once(db, settings) is True
+    stored = client.get(f"/api/runs/{run['id']}").json()["params"]
+    assert THRESHOLDS | {"model"} <= set(stored)
+
+    fake.turns = [
+        tools(("list_runs", {"dataset_id": None}), ("describe_network", {"run_id": None})),
+        reply("Countries that appear in the same articles."),
+    ]
+    r = ask(
+        client, "What is this network?", page="explorer", dataset_id=dataset["id"], run_id=run["id"]
+    )
+    assert r.status_code == 200, r.text
+    listed, described = (json.loads(res["content"]) for res in fake.tool_results())
+    (listed_run,) = [lr for lr in listed["runs"] if lr["run_id"] == run["id"]]
+    assert described["run_id"] == run["id"] and described["nodes"] > 0
+    for got in (listed_run["params"], described["params"]):
+        assert "model" not in got and not THRESHOLDS & set(got)
+        assert (got["entity"], got["link"], got["top_n"], got["max_authors"]) == (
+            "country",
+            "same_article",
+            50,
+            40,
+        )
+        assert got["min_weight"] == 1 and got["node_attribute_count"] == len(
+            stored["node_attributes"]
+        )
+    sent = fake.sent_messages()
+    for word in (*THRESHOLDS, "word_matching"):
+        assert word not in sent
+
+
+# ---------------------------------------------------------------- REQ-AST-7
+
+SUMMARY = (
+    "Institution (all authors) linked by Keywords (author keywords + Keywords Plus), "
+    "word matching, at least 4 shared, links of weight 2 or more, up to 200 nodes"
+)
+
+
+def _shown(dataset_id: int = 3, **overrides) -> dict:
+    """A proposal as a reply returned it to the browser."""
+    return {**PROPOSAL, "dataset_id": dataset_id, "summary": SUMMARY} | overrides
+
+
+def _earlier(text: str, *, proposal=None, filled=False, actions=None) -> dict:
+    m: dict = {"role": "assistant", "text": text}
+    if proposal is not None:
+        m |= {"proposal": proposal, "proposal_filled_form": filled}
+    if actions is not None:
+        m["actions"] = actions
+    return m
+
+
+def _record(message: dict) -> str | None:
+    """The app's record after an earlier reply's text, if it has one."""
+    assert message["role"] == "assistant"
+    if isinstance(message["content"], str):
+        return None
+    text, record = message["content"]
+    assert text["type"] == record["type"] == "text"
+    assert record["text"].startswith(chat_service.EARLIER_REPLY)
+    return record["text"]
+
+
+def test_earlier_proposals_reach_the_model(client, fake, run):
+    # The conversation seen in dev: the reply filled in the form, then the explorer.
+    history = [
+        {"role": "user", "text": "Institutions that share keywords"},
+        _earlier("Here is a proposal.", proposal=_shown(run["dataset_id"]), filled=True),
+        {"role": "user", "text": "Show only the 5 largest groups and fit the view."},
+    ]
+    r = ask(
+        client, messages=history, page="explorer", dataset_id=run["dataset_id"], run_id=run["id"]
+    )
+    assert r.status_code == 200, r.text
+    (call,) = fake.calls
+    earlier = call["messages"][1]
+    assert earlier["content"][0]["text"] == "Here is a proposal."
+    record = _record(earlier)
+    assert record is not None
+    assert f"Proposal for dataset id {run['dataset_id']}: {SUMMARY}." in record
+    assert chat_service.FILLED_FORM in record and "Open in Build form" not in record
+    assert '"min_shared":4' in record and '"max_item_df":0.1' in record
+
+    # Offered with "Open in Build form" instead (the user never used it).
+    fake.calls.clear()
+    history[1] = _earlier("Here is a proposal.", proposal=_shown(), filled=False)
+    assert ask(client, messages=history).status_code == 200
+    record = _record(fake.calls[0]["messages"][1])
+    assert record is not None and SUMMARY in record
+    assert chat_service.OFFERED in record and chat_service.FILLED_FORM not in record
+
+    # A Same article proposal is carried back without a model or thresholds (REQ-AST-6).
+    fake.calls.clear()
+    same = _shown(entity="author", link="same_article", min_shared=None, max_item_df=None)
+    history[1] = _earlier("Try this.", proposal=same, filled=True)
+    assert ask(client, messages=history).status_code == 200
+    record = _record(fake.calls[0]["messages"][1])
+    assert record is not None
+    assert "Author linked by Same article (co-occurrence), links of weight 2 or more" in record
+    for word in (*THRESHOLDS, "word_matching", "word matching"):
+        assert word not in record
+
+
+def test_earlier_explorer_actions_reach_the_model(client, fake):
+    actions = [
+        {"kind": "keep_largest_groups", "n": 5},
+        {"kind": "set_weight_range", "min": 2, "max": None},
+        {"kind": "set_relations", "relations": ["shares_keywords_with"], "visible": False},
+        {"kind": "fit"},
+    ]
+    history = [
+        {"role": "user", "text": "Show only the 5 largest groups and the strong links."},
+        _earlier("Done.", actions=actions),
+        {"role": "user", "text": "What did you change?"},
+    ]
+    assert ask(client, messages=history).status_code == 200
+    record = _record(fake.calls[0]["messages"][1])
+    assert record == (
+        f"{chat_service.EARLIER_REPLY} Explorer actions applied, in order: "
+        'keep_largest_groups {"n":5}; set_weight_range {"min":2,"max":null}; '
+        'set_relations {"relations":["shares_keywords_with"],"visible":false}; fit.'
+    )
+    # A reply that did nothing in the browser is its text alone.
+    fake.calls.clear()
+    history[1] = _earlier("Done.", actions=[])
+    assert ask(client, messages=history).status_code == 200
+    assert fake.calls[0]["messages"][1] == {"role": "assistant", "content": "Done."}
+
+
+def test_earlier_replies_reach_the_model_without_data_values(client, fake, run, dataset):
+    secret = _data_secrets(client, run, dataset)
+    typed = ["parma", "Italy"]  # what the user typed is sent as typed
+    assert "Italy" in secret
+    first = "Find parma, select the first match, then only nodes from Italy."
+    actions = [
+        {"kind": "set_search", "text": "parma"},
+        {"kind": "select_match", "n": 1},
+        {
+            "kind": "add_attribute_filter",
+            "target": "nodes",
+            "attribute": "country",
+            "values": typed[1:],
+        },
+    ]
+    # A browser that sends data values where only settings belong: the server writes its
+    # own summary, and an action carries only its kind and values.
+    leaky = _shown(dataset["id"], summary="Univ Parma and Fudan Univ, Unpublished cohort Zyxq")
+    history = [
+        {"role": "user", "text": first},
+        _earlier("Selected it.", proposal=leaky, filled=True, actions=actions),
+        {"role": "user", "text": "Which one did you select?"},
+    ]
+    r = ask(client, messages=history, page="explorer", dataset_id=dataset["id"], run_id=run["id"])
+    assert r.status_code == 200, r.text
+    record = _record(fake.calls[0]["messages"][1])
+    assert record is not None
+    assert 'select_match {"n":1}' in record  # the match number, never the node
+    assert 'set_search {"text":"parma"}' in record and '"values":["Italy"]' in record
+    assert SUMMARY in record
+
+    sent = fake.sent_messages().replace(first, "")
+    for value in typed:
+        sent = sent.replace(f'\\"{value}\\"', "")
+    leaked = sorted(v for v in secret if v in sent)
+    assert leaked == []
+
+
+def test_invalid_earlier_proposals_and_actions_are_dropped(client, fake):
+    history = [
+        {"role": "user", "text": "message 0"},
+        _earlier(
+            "message 1",
+            proposal=[_shown(), _shown(top_n=500)],  # more than one proposal
+            actions=[
+                {"kind": "keep_largest_groups", "n": "5"},  # wrong type
+                {"kind": "set_weight_range", "min": 5, "max": 2},
+                {"kind": "delete_dataset", "id": 1},  # not an action
+                {"kind": "set_search", "text": "x", "color": "red"},  # unknown field
+                "fit",
+                {"kind": "fit"},
+            ],
+        ),
+        {"role": "user", "text": "message 2"},
+        _earlier("message 3", proposal=_shown(min_shared=99), filled=True, actions={"kind": "fit"}),
+        {"role": "user", "text": "message 4"},
+        _earlier(
+            "message 5",
+            # A combination a custom run refuses, and a model the link field doesn't allow.
+            proposal=_shown(entity="journal", link="same_article"),
+            actions=[{"kind": "reset"}],
+        ),
+        {"role": "user", "text": "message 6"},
+        _earlier("message 7", proposal=_shown(link="abstract", model="character_similarity")),
+        {"role": "user", "text": "message 8"},
+    ]
+    fake.turns = [reply("As usual.")]
+    r = ask(client, messages=history)
+    assert r.status_code == 200, r.text
+    assert r.json()["reply"] == "As usual."
+    (call,) = fake.calls
+    messages = call["messages"]
+    assert _texts(call) == [f"message {i}" for i in range(9)]
+    assert (
+        _record(messages[1])
+        == f"{chat_service.EARLIER_REPLY} Explorer actions applied, in order: fit."
+    )
+    assert messages[3] == {"role": "assistant", "content": "message 3"}
+    assert _record(messages[5]) == (
+        f"{chat_service.EARLIER_REPLY} Explorer actions applied, in order: reset."
+    )
+    assert messages[7] == {"role": "assistant", "content": "message 7"}
+    assert "Proposal" not in fake.sent_messages()
+
+
+def test_earlier_replies_beyond_the_last_20_messages_do_not_reach_the_model(client, fake):
+    history = _conversation(31)
+    assert history[1]["role"] == history[29]["role"] == "assistant"
+    history[1] = _earlier(
+        "message 1",
+        proposal=_shown(top_n=1234),
+        filled=True,
+        actions=[{"kind": "keep_largest_groups", "n": 77}],
+    )
+    history[29] = _earlier("message 29", actions=[{"kind": "keep_largest_groups", "n": 5}])
+    assert ask(client, messages=history).status_code == 200
+    (call,) = fake.calls
+    assert _texts(call)[0] == "message 12"
+    sent = fake.sent_messages()
+    assert "1234" not in sent and '"n":77' not in sent and "Proposal" not in sent
+    assert _record(call["messages"][-2]) == (
+        f'{chat_service.EARLIER_REPLY} Explorer actions applied, in order: keep_largest_groups {{"n":5}}.'
+    )
+
+
+def test_earlier_reply_actions_are_capped_at_100(client, fake):
+    many = [{"kind": "keep_largest_groups", "n": i} for i in range(1, 151)]
+    many.insert(3, {"kind": "keep_largest_groups", "n": "4"})  # invalid: not counted
+    exactly = [{"kind": "set_search", "text": f"t{i}"} for i in range(100)]
+    history = [
+        {"role": "user", "text": "message 0"},
+        _earlier("message 1", actions=many),
+        {"role": "user", "text": "message 2"},
+        _earlier("message 3", actions=exactly),
+        {"role": "user", "text": "message 4"},
+    ]
+    fake.turns = [reply("As usual.")]
+    r = ask(client, messages=history)
+    assert r.status_code == 200, r.text
+    assert r.json()["reply"] == "As usual."
+    (call,) = fake.calls
+    assert _texts(call) == [f"message {i}" for i in range(5)]
+
+    first = _record(call["messages"][1])
+    assert first is not None
+    steps = first.removeprefix(
+        f"{chat_service.EARLIER_REPLY} Explorer actions applied, in order: "
+    ).removesuffix(".")
+    assert steps.split("; ") == [f'keep_largest_groups {{"n":{i}}}' for i in range(1, 101)]
+    second = _record(call["messages"][3])
+    assert second is not None and second.count("set_search") == 100
+    assert '"t99"' in second
+
+
+def test_earlier_replies_are_not_stored_on_the_server(client, fake, db, settings, run):
+    db.commit()
+    before, files = _database_dump(db), _files(settings)
+    history = [
+        {"role": "user", "text": "Find qwertyzxcv"},
+        _earlier(
+            "Asdfghjkl reply",
+            proposal=_shown(run["dataset_id"], top_n=1357, summary="Poiuytrewq summary"),
+            filled=True,
+            actions=[
+                {"kind": "set_search", "text": "qwertyzxcv"},
+                {"kind": "select_match", "n": 3},
+            ],
+        ),
+        {"role": "user", "text": "And now?"},
+    ]
+    r = ask(
+        client, messages=history, page="explorer", dataset_id=run["dataset_id"], run_id=run["id"]
+    )
+    assert r.status_code == 200, r.text
+    assert "qwertyzxcv" in fake.sent_messages()  # it did reach the model
+
+    db.expire_all()
+    after = _database_dump(db)
+    assert after == before
+    for value in ("qwertyzxcv", "Asdfghjkl", "Poiuytrewq", "1357", "select_match"):
+        assert value not in after
+    assert _files(settings) == files

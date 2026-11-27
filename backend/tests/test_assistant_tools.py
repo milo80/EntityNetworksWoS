@@ -68,7 +68,11 @@ def test_platform_guide_covers_every_entity_link_and_model():
         assert f"{key}: can be linked by {', '.join(allowed)}\n" in SYSTEM_PROMPT + "\n"
     for key, spec in custom.LINKS.items():
         assert f'- {key}: "{spec.label}"' in SYSTEM_PROMPT
-        assert f"models: {', '.join(spec.models)};" in SYSTEM_PROMPT
+        if spec.kind != "same_article":  # no model (REQ-AST-6 AC4)
+            line = next(
+                ln for ln in SYSTEM_PROMPT.splitlines() if ln.startswith(f'- {key}: "{spec.label}"')
+            )
+            assert f"models: {', '.join(spec.models)};" in line
     for key, label in custom.MODELS.items():
         assert f'- {key}: "{label}". {custom.MODEL_DESCRIPTIONS[key]}' in SYSTEM_PROMPT
     # The rules a custom run applies.
@@ -351,3 +355,139 @@ def test_list_runs_returns_the_count_of_node_attributes_not_their_names():
     assert "node_attributes" not in listed
     assert listed["node_attribute_count"] == 2
     assert "Zyxq" not in json.dumps(out)
+
+
+# ---------------------------------------------------------------- settings that applied (REQ-AST-6)
+
+THRESHOLDS = {"min_shared", "max_item_df", "threshold", "max_word_df"}
+
+
+def _stored_run(run_id: int, **params) -> NetworkRun:
+    """A succeeded custom run whose stored settings hold every threshold, as runs store them."""
+    stored = CustomParams(**params).model_dump(mode="json")
+    assert THRESHOLDS <= set(stored) and "model" in stored
+    return NetworkRun(
+        id=run_id,
+        dataset_id=2,
+        relation="custom",
+        params=stored,
+        status="succeeded",
+        result={"nodes": [], "edges": []},
+        node_count=0,
+        edge_count=0,
+    )
+
+
+def _listed_and_described(run: NetworkRun) -> list[dict]:
+    listed = tools.list_runs(_ctx(_Runs([run])), tools.DatasetRef(dataset_id=None))
+    return [listed["runs"][0]["params"], network_metadata(run)["params"]]
+
+
+def test_same_article_network_settings_leave_out_the_unused_model_and_thresholds():
+    run = _stored_run(
+        4,
+        entity="country",
+        link="same_article",
+        top_n=120,
+        max_authors=30,
+        min_weight=2,
+        node_attributes=("Zyxq Column", "country"),
+    )
+    for params in _listed_and_described(run):
+        assert "model" not in params
+        assert not THRESHOLDS & set(params)
+        assert params["entity"] == "country" and params["link"] == "same_article"
+        assert (params["top_n"], params["max_authors"], params["min_weight"]) == (120, 30, 2)
+        assert params["node_attribute_count"] == 2
+        text = json.dumps(params)
+        assert "word_matching" not in text and "Zyxq" not in text
+    # What the model reads about the dataset's link fields: no model for Same article.
+    meta = dataset_metadata(Dataset(id=2, name="x", profile_status="pending"))
+    links = {lk["key"]: lk for lk in meta["links"]}
+    assert links["same_article"]["models"] == []
+    assert links["keywords"]["models"] == ["word_matching"]
+    # The preset relations keep every setting.
+    assert tools._params_metadata("institution_keywords", {"min_shared_keywords": 3}) == {
+        "min_shared_keywords": 3
+    }
+
+
+def test_network_settings_list_only_the_thresholds_of_their_model():
+    cases = [
+        ({"link": "keywords", "model": "word_matching"}, {"min_shared", "max_item_df"}),
+        ({"link": "article_title", "model": "word_overlap"}, {"threshold", "max_word_df"}),
+        (
+            {"link": "article_title", "model": "character_similarity"},
+            {"threshold", "max_word_df"},
+        ),
+    ]
+    for params, used in cases:
+        run = _stored_run(6, entity="journal", **params)
+        for listed in _listed_and_described(run):
+            assert THRESHOLDS & set(listed) == used, params
+            assert listed["model"] == params["model"]
+            assert all(listed[k] == run.params[k] for k in used)
+
+
+def _same_article_args(**overrides) -> dict:
+    return {
+        "entity": "author",
+        "link": "same_article",
+        "model": None,
+        "top_n": 300,
+        "min_weight": 2,
+        "min_shared": 3,
+        "max_item_df": 0.05,
+        "threshold": None,
+        "max_word_df": None,
+    } | overrides
+
+
+def test_same_article_proposal_result_names_no_model_or_thresholds(monkeypatch):
+    dataset = Dataset(id=7, name="x", profile_status="pending")
+    monkeypatch.setattr(tools, "_dataset", lambda ctx, dataset_id: dataset)
+    for model in (None, "word_matching"):  # the guide says null; word_matching still fits
+        out = Collected()
+        content, is_error = run_tool(
+            "propose_network", _same_article_args(model=model), _ctx(), out
+        )
+        assert is_error is False, content
+        result = json.loads(content)
+        assert "model" not in result["settings"]
+        assert not THRESHOLDS & set(result["settings"])
+        for word in ("word_matching", "Word matching", "word matching", "threshold"):
+            assert word not in content
+        # The proposal shown to the user: its summary has no model or thresholds.
+        assert out.proposal is not None
+        assert out.proposal.summary == (
+            "Author linked by Same article (co-occurrence), links of weight 2 or more, "
+            "up to 300 nodes"
+        )
+        assert (out.proposal.min_shared, out.proposal.max_item_df) == (None, None)
+    # Any other link field still needs a model ...
+    content, is_error = run_tool(
+        "propose_network", _same_article_args(link="keywords"), _ctx(), Collected()
+    )
+    assert is_error is True and "needs a model" in content
+    # ... and its result names the model and only that model's thresholds.
+    content, is_error = run_tool(
+        "propose_network",
+        _same_article_args(link="keywords", model="word_matching"),
+        _ctx(),
+        Collected(),
+    )
+    settings = json.loads(content)["settings"]
+    assert settings["model"] == "word_matching"
+    assert THRESHOLDS & set(settings) == {"min_shared", "max_item_df"}
+
+
+def test_platform_guide_gives_same_article_no_model_or_thresholds():
+    line = next(ln for ln in SYSTEM_PROMPT.splitlines() if ln.startswith("- same_article: "))
+    assert '"Same article (co-occurrence)"' in line
+    assert "no model and no thresholds" in line
+    assert "models:" not in line
+    for model in custom.MODELS:
+        assert model not in line
+    assert "Same article (co-occurrence)\n  uses no model and no thresholds" in SYSTEM_PROMPT
+    propose = next(t for t in TOOLS if t["name"] == "propose_network")
+    assert "for same_article, model and every threshold are null" in propose["description"]

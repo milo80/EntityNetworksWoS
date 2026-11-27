@@ -418,3 +418,202 @@ describe("assistant panel", () => {
     ]);
   });
 });
+
+/** A custom network of dataset 7, and its graph. */
+const runOf = (id: number) => ({
+  id,
+  dataset_id: 7,
+  relation: "custom",
+  params: { entity: "institution", link: "keywords" },
+  status: "succeeded",
+  error: null,
+  node_count: 3,
+  edge_count: 1,
+  created_at: `2026-11-1${id}T10:00:00Z`,
+  started_at: null,
+  finished_at: null,
+});
+const SECRET_NETWORK = {
+  nodes: [
+    { id: "a", name: "Secret Univ Alpha", team: "Narnia", role: "x" },
+    { id: "b", name: "Secret Univ Beta", team: "Narnia", role: "x" },
+    { id: "c", name: "Other Place", team: "Gondor", role: "x" },
+  ],
+  edges: [{ source: "a", target: "b", type: "shares_keywords_with", weight: 1 }],
+};
+const runRoutes: Record<string, Handler> = {
+  "GET /runs?dataset_id=7": () => ({ body: [runOf(5), runOf(6)] }),
+  "GET /runs/5": () => ({ body: runOf(5) }),
+  "GET /runs/6": () => ({ body: runOf(6) }),
+  "GET /runs/5/network": () => ({ body: SECRET_NETWORK }),
+  "GET /runs/6/network": () => ({ body: SECRET_NETWORK }),
+};
+
+type SentMessage = { role: string; text: string; [key: string]: unknown };
+/** The messages of each chat request, in order. */
+const sentMessages = (calls: Recorded[]) =>
+  calls
+    .filter((c) => c.path === "/assistant/chat")
+    .map((c) => (c.body as { messages: SentMessage[] }).messages);
+
+describe("assistant panel: what earlier replies did (REQ-AST-7)", () => {
+  it("sends the proposal of an earlier reply with the conversation", async () => {
+    const replies = [answer("Try this.", { proposal: PROPOSAL }), answer("OK"), answer("OK")];
+    const api = backend(() => ({ body: replies.shift() }));
+    // Offered with "Open in Build form" (no form open), then put in the form.
+    const user = renderApp("/datasets");
+    await ask(user, "Countries that share keywords");
+    const reply = (await within(conversation()).findByText("Try this.")).parentElement!;
+    await ask(user, "Is that a good choice?");
+    await within(conversation()).findByText("OK");
+    await user.click(within(reply).getByRole("button", { name: "Open in Build form" }));
+    await screen.findByRole("form", { name: "Build network" });
+    await ask(user, "And now?");
+    await waitFor(() => expect(sentMessages(api.calls)).toHaveLength(3));
+
+    const [first, second, third] = sentMessages(api.calls);
+    expect(first).toEqual([{ role: "user", text: "Countries that share keywords" }]);
+    const earlier = {
+      role: "assistant",
+      text: "Try this.",
+      proposal: PROPOSAL, // its settings and summary
+    };
+    expect(second![1]).toEqual({ ...earlier, proposal_filled_form: false });
+    expect(third![1]).toEqual({ ...earlier, proposal_filled_form: true });
+    expect(third![3]).toEqual({ role: "assistant", text: "OK" }); // did nothing here
+
+    // With the dataset's form open, the reply fills it in at once.
+    cleanup();
+    vi.unstubAllGlobals();
+    const again = [answer("Filled.", { proposal: PROPOSAL }), answer("OK")];
+    const api2 = backend(() => ({ body: again.shift() }));
+    const user2 = renderApp("/datasets/7");
+    await ask(user2, "Countries that share keywords");
+    await within(conversation()).findByText("Filled in the Build network form.");
+    await ask(user2, "Show only the 5 largest groups and fit the view.");
+    await waitFor(() => expect(sentMessages(api2.calls)).toHaveLength(2));
+    expect(sentMessages(api2.calls)[1]![1]).toEqual({
+      role: "assistant",
+      text: "Filled.",
+      proposal: PROPOSAL,
+      proposal_filled_form: true,
+    });
+  });
+
+  it("sends the explorer actions an earlier reply applied", async () => {
+    const actions = [
+      { kind: "keep_largest_groups", n: 1 },
+      { kind: "set_weight_range", min: 1, max: null },
+      { kind: "fit" },
+    ] as const;
+    const replies = [
+      answer("Left too soon.", { actions: [...actions] }),
+      answer("Done.", { actions: [...actions] }),
+      answer("OK"),
+    ];
+    const api = backend(() => ({ body: replies.shift() }), runRoutes);
+    const { release } = holdChat(api);
+    const user = renderApp("/runs/5");
+    await screen.findByRole("heading", { name: /linked by/ });
+    await ask(user, "Only the largest group");
+    // The user leaves that network before the answer: nothing is applied.
+    await user.click(screen.getByRole("link", { name: /AI in medicine/ }));
+    const explore = await screen.findAllByRole("link", { name: "Explore" });
+    await user.click(explore.find((a) => a.getAttribute("href") === "/runs/6")!);
+    await screen.findByRole("heading", { name: /linked by/ });
+    release();
+    await within(conversation()).findByText(
+      "Open the network in the explorer to apply these changes.",
+    );
+
+    await ask(user, "Only the largest group");
+    await within(conversation()).findByText("Done.");
+    expect(within(conversation()).getByText("Showing the largest group")).toBeInTheDocument();
+    await ask(user, "What did you change?");
+    await waitFor(() => expect(sentMessages(api.calls)).toHaveLength(3));
+
+    const [, second, third] = sentMessages(api.calls);
+    expect(second![1]).toEqual({ role: "assistant", text: "Left too soon." }); // not applied
+    expect(third![1]).toEqual({ role: "assistant", text: "Left too soon." });
+    expect(third![3]).toEqual({ role: "assistant", text: "Done.", actions: [...actions] });
+  });
+
+  it("never sends the name of a node the assistant selected", async () => {
+    const replies = [
+      answer("Here it is.", {
+        actions: [
+          { kind: "set_search", text: "alpha" },
+          { kind: "select_match", n: 1 },
+        ],
+      }),
+      answer("OK"),
+    ];
+    const api = backend(() => ({ body: replies.shift() }), runRoutes);
+    const user = renderApp("/runs/5");
+    await screen.findByRole("heading", { name: /linked by/ });
+    await ask(user, "Find alpha and select it");
+    // The panel shows the node's name ...
+    expect(
+      await within(conversation()).findByText("Selected Secret Univ Alpha"),
+    ).toBeInTheDocument();
+    await ask(user, "Which one is it?");
+    await waitFor(() => expect(sentMessages(api.calls)).toHaveLength(2));
+
+    // ... but sends only the match number (and the search text, as the reply set it).
+    const [, second] = sentMessages(api.calls);
+    expect(second![1]).toEqual({
+      role: "assistant",
+      text: "Here it is.",
+      actions: [
+        { kind: "set_search", text: "alpha" },
+        { kind: "select_match", n: 1 },
+      ],
+    });
+    const body = JSON.stringify(second);
+    for (const secret of ["Secret", "Univ", "Narnia", "Selected"]) {
+      expect(body).not.toContain(secret);
+    }
+  });
+
+  it("does not send back actions that did not take effect", async () => {
+    const replies = [
+      answer("Tried.", {
+        actions: [
+          { kind: "add_attribute_filter", target: "nodes", attribute: "planet", values: ["Mars"] },
+          { kind: "set_search", text: "zzz" },
+          { kind: "select_match", n: 2 },
+          { kind: "groups_by_rank", ranks: [1, 9] },
+          { kind: "fit" },
+        ],
+      }),
+      answer("OK"),
+    ];
+    const api = backend(() => ({ body: replies.shift() }), runRoutes);
+    const user = renderApp("/runs/5");
+    await screen.findByRole("heading", { name: /linked by/ });
+    await ask(user, "Only nodes from Mars, then select the second zzz");
+    // The panel says which actions didn't take effect ...
+    expect(
+      await within(conversation()).findByText("No attribute planet in this network."),
+    ).toBeInTheDocument();
+    expect(within(conversation()).getByText('Only 0 matches for "zzz".')).toBeInTheDocument();
+    await ask(user, "Did that work?");
+    await waitFor(() => expect(sentMessages(api.calls)).toHaveLength(2));
+
+    // ... and sends back only those that did (group 9 doesn't exist: only rank 1 is kept).
+    const [, second] = sentMessages(api.calls);
+    expect(second![1]).toEqual({
+      role: "assistant",
+      text: "Tried.",
+      actions: [
+        { kind: "set_search", text: "zzz" },
+        { kind: "groups_by_rank", ranks: [1] },
+        { kind: "fit" },
+      ],
+    });
+    const body = JSON.stringify(second);
+    for (const secret of ["Secret", "Narnia", "Gondor", "Only 0", "No attribute"]) {
+      expect(body).not.toContain(secret);
+    }
+  });
+});

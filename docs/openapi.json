@@ -1275,6 +1275,83 @@
             "maxLength": 20000,
             "minLength": 1,
             "title": "Text"
+          },
+          "proposal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NetworkProposal"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Assistant replies: the proposal the reply returned"
+          },
+          "proposal_filled_form": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposal Filled Form",
+            "description": "With a proposal: true if it filled in the Build network form, false if it was offered with 'Open in Build form'"
+          },
+          "actions": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/KeepLargestGroups"
+                },
+                {
+                  "$ref": "#/components/schemas/GroupsByRank"
+                },
+                {
+                  "$ref": "#/components/schemas/SetRelations"
+                },
+                {
+                  "$ref": "#/components/schemas/SetWeightRange"
+                },
+                {
+                  "$ref": "#/components/schemas/SetHideUnlinked"
+                },
+                {
+                  "$ref": "#/components/schemas/AddAttributeFilter"
+                },
+                {
+                  "$ref": "#/components/schemas/SetSearch"
+                },
+                {
+                  "$ref": "#/components/schemas/SelectMatch"
+                },
+                {
+                  "$ref": "#/components/schemas/Fit"
+                },
+                {
+                  "$ref": "#/components/schemas/Reset"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "kind",
+                "mapping": {
+                  "add_attribute_filter": "#/components/schemas/AddAttributeFilter",
+                  "fit": "#/components/schemas/Fit",
+                  "groups_by_rank": "#/components/schemas/GroupsByRank",
+                  "keep_largest_groups": "#/components/schemas/KeepLargestGroups",
+                  "reset": "#/components/schemas/Reset",
+                  "select_match": "#/components/schemas/SelectMatch",
+                  "set_hide_unlinked": "#/components/schemas/SetHideUnlinked",
+                  "set_relations": "#/components/schemas/SetRelations",
+                  "set_search": "#/components/schemas/SetSearch",
+                  "set_weight_range": "#/components/schemas/SetWeightRange"
+                }
+              }
+            },
+            "type": "array",
+            "title": "Actions",
+            "description": "Assistant replies: the explorer actions that were applied, in order (only the first 100 valid ones are used)"
           }
         },
         "additionalProperties": false,
@@ -1283,7 +1360,8 @@
           "role",
           "text"
         ],
-        "title": "ChatMessage"
+        "title": "ChatMessage",
+        "description": "One message. An assistant reply also carries back what it did in the browser.\n\nA proposal or action that a reply could not carry is dropped, not refused."
       },
       "ChatOut": {
         "properties": {

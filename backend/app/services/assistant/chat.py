@@ -7,6 +7,7 @@ MAX_TOOL_ROUNDS turns, and the whole answer gets ANSWER_TIMEOUT_SECONDS.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from dataclasses import dataclass
@@ -18,7 +19,7 @@ from anthropic.types import Message, MessageParam, TextBlockParam, ToolResultBlo
 
 from ...schemas.assistant import ChatContext, ChatMessage, ChatOut
 from .guide import SYSTEM_PROMPT
-from .tools import TOOLS, Collected, ToolContext, run_tool
+from .tools import TOOLS, Collected, ToolContext, carried_proposal, proposal_settings, run_tool
 
 log = logging.getLogger(__name__)
 
@@ -96,8 +97,47 @@ def context_line(context: ChatContext) -> str:
     return f"[App context, not typed by the user] {'; '.join(parts)}"
 
 
+EARLIER_REPLY = "[App record of this reply, not written by you or the user]"
+FILLED_FORM = (
+    "It filled in the user's Build network form with these settings "
+    "(nothing is built until the user clicks Build)."
+)
+OFFERED = (
+    'It was offered with an "Open in Build form" button, which the user has not used: '
+    "the form was not filled in."
+)
+
+
+def _compact(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def earlier_reply_record(m: ChatMessage) -> str | None:
+    """What an earlier reply did in the browser: its proposal and the explorer actions
+    applied. Settings, action kinds and values only (a selected node is its match number)."""
+    parts = []
+    if m.proposal is not None:
+        p = carried_proposal(m.proposal)
+        parts.append(
+            f"Proposal for dataset id {p.dataset_id}: {p.summary}. "
+            f"Settings: {_compact(proposal_settings(p))}. "
+            + (FILLED_FORM if m.proposal_filled_form else OFFERED)
+        )
+    if m.actions:
+        steps = []
+        for a in m.actions:
+            values = a.model_dump(exclude={"kind"})
+            steps.append(f"{a.kind} {_compact(values)}" if values else a.kind)
+        parts.append(f"Explorer actions applied, in order: {'; '.join(steps)}.")
+    return f"{EARLIER_REPLY} {' '.join(parts)}" if parts else None
+
+
 def model_messages(history: list[ChatMessage], context: ChatContext) -> list[MessageParam]:
-    """The last MAX_MODEL_MESSAGES messages, starting with the user's; context on the last."""
+    """The last MAX_MODEL_MESSAGES messages, starting with the user's; context on the last.
+
+    An earlier reply that did something in the browser gets a record of it after its
+    text (only for the messages in the window).
+    """
     recent = history[-MAX_MODEL_MESSAGES:]
     while recent and recent[0].role != "user":
         recent = recent[1:]
@@ -105,6 +145,16 @@ def model_messages(history: list[ChatMessage], context: ChatContext) -> list[Mes
     for m in recent[:-1]:
         if m.role == "user":
             messages.append({"role": "user", "content": m.text})
+        elif (record := earlier_reply_record(m)) is not None:
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": m.text},
+                        {"type": "text", "text": record},
+                    ],
+                }
+            )
         else:
             messages.append({"role": "assistant", "content": m.text})
     last = recent[-1]

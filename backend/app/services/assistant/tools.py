@@ -63,6 +63,25 @@ TOOL_BROKE = "This tool failed unexpectedly. Answer without it."
 
 SHARE_FIELDS = ("max_item_df", "threshold", "max_word_df")
 """Settings given as a share (0-1); the Build form takes them as whole percents."""
+THRESHOLDS = ("min_shared", "max_item_df", "threshold", "max_word_df")
+"""Every model's thresholds (a custom network uses only its model's, see MODEL_SETTINGS)."""
+
+
+def is_same_article(link: object) -> bool:
+    spec = custom.LINKS.get(link) if isinstance(link, str) else None
+    return spec is not None and spec.kind == "same_article"
+
+
+def unused_settings(link: object, model: object) -> frozenset[str]:
+    """Settings of a custom network that didn't shape it, so the model never hears of them.
+
+    Same article (co-occurrence) uses no model and no thresholds; any other link
+    field uses only the thresholds of its model.
+    """
+    if is_same_article(link):
+        return frozenset({"model", *THRESHOLDS})
+    used = MODEL_SETTINGS.get(model, ()) if isinstance(model, str) else ()
+    return frozenset(THRESHOLDS) - set(used)
 
 
 class ToolFailed(Exception):
@@ -171,7 +190,13 @@ def dataset_metadata(dataset: Dataset) -> dict[str, Any]:
             for e in options.entities
         ],
         "links": [
-            {"key": lk.key, "available": lk.available, "reason": lk.reason, "models": lk.models}
+            {
+                "key": lk.key,
+                "available": lk.available,
+                "reason": lk.reason,
+                # Same article uses no model (and no thresholds).
+                "models": [] if is_same_article(lk.key) else lk.models,
+            }
             for lk in options.links
         ],
         "attributes": [
@@ -197,7 +222,7 @@ def list_runs(ctx: ToolContext, args: DatasetRef) -> dict[str, Any]:
                 "dataset_id": r.dataset_id,
                 "relation": r.relation,
                 "status": r.status,
-                "params": _params_metadata(r.params),
+                "params": _params_metadata(r.relation, r.params),
                 "nodes": r.node_count,
                 "links": r.edge_count,
             }
@@ -206,9 +231,18 @@ def list_runs(ctx: ToolContext, args: DatasetRef) -> dict[str, Any]:
     }
 
 
-def _params_metadata(params: dict[str, Any]) -> dict[str, Any]:
-    """A run's settings, with the count of its node attribute fields instead of their names."""
-    out = {k: v for k, v in params.items() if k != "node_attributes"}
+def _params_metadata(relation: str, params: dict[str, Any]) -> dict[str, Any]:
+    """A run's settings, with the count of its node attribute fields instead of their names.
+
+    For a custom network, only the settings that shaped it (see unused_settings):
+    a stored run keeps every threshold, even those its link field and model ignore.
+    """
+    unused = (
+        unused_settings(params.get("link"), params.get("model"))
+        if relation == "custom"
+        else frozenset()
+    )
+    out = {k: v for k, v in params.items() if k != "node_attributes" and k not in unused}
     if "node_attributes" in params:
         out["node_attribute_count"] = len(params["node_attributes"] or [])
     return out
@@ -256,7 +290,7 @@ def network_metadata(run: NetworkRun) -> dict[str, Any]:
         "run_id": run.id,
         "dataset_id": run.dataset_id,
         "relation": run.relation,
-        "params": _params_metadata(run.params),
+        "params": _params_metadata(run.relation, run.params),
         "nodes": len(nodes),
         "links": len(edges),
         "groups_by_rank": [{"rank": i + 1, "nodes": c} for i, c in enumerate(ranked)],
@@ -281,7 +315,9 @@ def network_metadata(run: NetworkRun) -> dict[str, Any]:
 class ProposeNetworkInput(_Input):
     entity: EntityName
     link: LinkName
-    model: ModelName
+    model: ModelName | None = Field(
+        description="A model the link field allows; null for same_article (it uses none)"
+    )
     top_n: int = Field(description="Maximum nodes")
     min_weight: int = Field(description="Minimum link weight (1 keeps every link)")
     min_shared: int | None = Field(description="word_matching only, else null")
@@ -323,8 +359,13 @@ def propose_network(ctx: ToolContext, args: ProposeNetworkInput, out: Collected)
         "proposed": True,
         "note": "The user's Build network form will be filled in with these settings. "
         "Nothing is built until the user clicks Build.",
-        "settings": proposal.model_dump(exclude={"summary"}),
+        "settings": proposal_settings(proposal),
     }
+
+
+def proposal_settings(p: NetworkProposal) -> dict[str, Any]:
+    """A proposal's settings as the model gets them: only those that shape the network."""
+    return p.model_dump(exclude={"summary", *unused_settings(p.link, p.model)})
 
 
 def whole_percent(share: float) -> float:
@@ -343,12 +384,19 @@ def check_proposal(dataset: Dataset, args: ProposeNetworkInput) -> NetworkPropos
 
     Shares are rounded to whole percents first, so the proposal is what the form shows.
     """
-    uses = (
-        () if custom.LINKS[args.link].kind == "same_article" else MODEL_SETTINGS.get(args.model, ())
-    )
+    same_article = is_same_article(args.link)
+    model = args.model
+    if model is None:
+        if not same_article:
+            raise ToolFailed(
+                f"A custom run would refuse this: model: {custom.LINKS[args.link].label} needs "
+                "a model. Not proposed."
+            )
+        model = custom.LINKS[args.link].models[0]  # unused: co-occurrence compares nothing
+    uses = () if same_article else MODEL_SETTINGS.get(model, ())
     given = {k: getattr(args, k) for k in uses if getattr(args, k) is not None}
-    if args.model in custom.THRESHOLD_DEFAULTS and "threshold" in uses:
-        given.setdefault("threshold", custom.THRESHOLD_DEFAULTS[args.model])
+    if model in custom.THRESHOLD_DEFAULTS and "threshold" in uses:
+        given.setdefault("threshold", custom.THRESHOLD_DEFAULTS[model])
     for k in SHARE_FIELDS:
         if k in given:
             given[k] = whole_percent(given[k])
@@ -356,7 +404,7 @@ def check_proposal(dataset: Dataset, args: ProposeNetworkInput) -> NetworkPropos
         params = CustomParams(
             entity=args.entity,
             link=args.link,
-            model=args.model,
+            model=model,
             top_n=args.top_n,
             min_weight=args.min_weight,
             **given,
@@ -490,7 +538,7 @@ def _tools() -> list[ToolParam]:
             "like a custom run (combination and ranges) and against what the dataset offers; "
             "an error says what doesn't fit. On success the user's Build network form is "
             "filled in; nothing is built. Give the thresholds of the chosen model and null "
-            "for the others. Shares (max_item_df, threshold, max_word_df) are rounded to "
+            "for the others; for same_article, model and every threshold are null. Shares (max_item_df, threshold, max_word_df) are rounded to "
             "the nearest whole percent, at least 1% (0.123 becomes 0.12), as the form takes "
             "whole percents; the result has the rounded values.",
             "input_schema": _input_schema(ProposeNetworkInput),
@@ -544,3 +592,26 @@ def run_tool(name: str, raw: object, ctx: ToolContext, out: Collected) -> tuple[
         log.error("Assistant: a tool failed (%s)", type(exc).__name__)
         return TOOL_BROKE, True
     return json.dumps(result, ensure_ascii=False, separators=(",", ":")), False
+
+
+# ---------------------------------------------------------------- earlier replies
+
+
+def carried_proposal(p: NetworkProposal) -> NetworkProposal:
+    """An earlier reply's proposal, as the server would have returned it.
+
+    The request schema already checked it like a custom run. Only the thresholds
+    it uses are kept, and the summary is the server's, not the one sent back.
+    """
+    unused = unused_settings(p.link, p.model)
+    params = CustomParams(
+        entity=p.entity,
+        link=p.link,
+        model=p.model,
+        top_n=p.top_n,
+        min_weight=p.min_weight,
+        **{k: getattr(p, k) for k in THRESHOLDS if getattr(p, k) is not None},
+    )
+    out = p.model_copy(update={k: None if k in unused else getattr(params, k) for k in THRESHOLDS})
+    out.summary = summary(out)
+    return out
